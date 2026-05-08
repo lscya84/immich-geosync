@@ -99,7 +99,6 @@ body {
 .map-floating-tools {
   position: absolute;
   top: 12px;
-  left: 12px;
   right: 12px;
   z-index: 700;
   pointer-events: none;
@@ -109,7 +108,7 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: flex-end;
   pointer-events: auto;
 }
 
@@ -349,7 +348,6 @@ button:disabled {
 
   .map-floating-tools {
     top: 10px;
-    left: 10px;
     right: 10px;
   }
 
