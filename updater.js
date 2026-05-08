@@ -242,13 +242,17 @@ async function listEnabledOverrideRules(client) {
             "building" VARCHAR DEFAULT '',
             "priority" INTEGER NOT NULL DEFAULT 100,
             "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+            "apply_as_override" BOOLEAN NOT NULL DEFAULT TRUE,
+            "treat_as_single_cluster" BOOLEAN NOT NULL DEFAULT FALSE,
             "created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
     `);
+    await client.query('ALTER TABLE "custom_geo_override_rules" ADD COLUMN IF NOT EXISTS "apply_as_override" BOOLEAN NOT NULL DEFAULT TRUE');
+    await client.query('ALTER TABLE "custom_geo_override_rules" ADD COLUMN IF NOT EXISTS "treat_as_single_cluster" BOOLEAN NOT NULL DEFAULT FALSE');
 
     const res = await client.query(`
-        SELECT "id", "name", "rule_type", "geometry", "country", "state", "city", "building", "priority", "enabled"
+        SELECT "id", "name", "rule_type", "geometry", "country", "state", "city", "building", "priority", "enabled", "apply_as_override", "treat_as_single_cluster"
         FROM "custom_geo_override_rules"
         WHERE "enabled" = TRUE
         ORDER BY "priority" ASC, "created_at" DESC
@@ -265,6 +269,8 @@ async function listEnabledOverrideRules(client) {
         building: row.building,
         priority: row.priority,
         enabled: row.enabled,
+        applyAsOverride: row.apply_as_override,
+        treatAsSingleCluster: row.treat_as_single_cluster,
     }));
 }
 
@@ -446,10 +452,13 @@ async function main(forceUpdate = false) {
         const warmedCount = await warmUpCache(client);
         console.log(`[${nowKst()}] 🔥 캐시 워밍업 완료: ${warmedCount}건 적재`);
 
-        const overrideRules = await listEnabledOverrideRules(client);
-        const clusterGroups = await listEnabledClusterGroups(client);
+        const allRules = await listEnabledOverrideRules(client);
+        const overrideRules = allRules.filter((rule) => rule.applyAsOverride !== false);
+        const ruleBasedClusterGroups = allRules.filter((rule) => rule.treatAsSingleCluster === true);
+        const legacyClusterGroups = await listEnabledClusterGroups(client);
+        const clusterGroups = [...ruleBasedClusterGroups, ...legacyClusterGroups];
         console.log(`[${nowKst()}] 🗺️ 활성 override rule 로드: ${overrideRules.length}개`);
-        console.log(`[${nowKst()}] 🧩 활성 manual cluster group 로드: ${clusterGroups.length}개`);
+        console.log(`[${nowKst()}] 🧩 활성 single-cluster rule/group 로드: ${clusterGroups.length}개`);
 
         let queryCondition = `WHERE "latitude" BETWEEN 33 AND 43 AND "longitude" BETWEEN 124 AND 132`;
         queryCondition += ` AND (COALESCE("country", '') IN ('', 'South Korea', '대한민국', 'Korea'))`;

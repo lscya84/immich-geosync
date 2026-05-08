@@ -33,6 +33,8 @@
             <label>도시/구/동<input name="city" /></label>
             <label>건물명<input name="building" /></label>
             <label>우선순위<input type="number" name="priority" value="100" /></label>
+            <label class="checkbox"><input type="checkbox" name="applyAsOverride" checked /> 주소 override로 사용</label>
+            <label class="checkbox"><input type="checkbox" name="treatAsSingleCluster" /> 폴리곤 내부를 단일 클러스터로 취급</label>
             <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성화</label>
             <button type="submit">현재 그린 도형으로 저장</button>
           </form>
@@ -45,24 +47,6 @@
             <button id="refresh-rules" type="button">새로고침</button>
           </div>
           <ul id="rule-list" class="rule-list"></ul>
-        </section>
-
-        <section>
-          <h2>클러스터 그룹 추가</h2>
-          <form id="group-form">
-            <label>그룹 이름<input name="name" required /></label>
-            <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성화</label>
-            <button type="submit">현재 폴리곤으로 그룹 저장</button>
-          </form>
-          <p class="hint">그룹은 polygon만 지원합니다. 이 영역 안의 점들은 하나의 수동 클러스터로 취급됩니다.</p>
-        </section>
-
-        <section>
-          <div class="section-header">
-            <h2>클러스터 그룹 목록</h2>
-            <button id="refresh-groups" type="button">새로고침</button>
-          </div>
-          <ul id="group-list" class="rule-list"></ul>
         </section>
 
         <section>

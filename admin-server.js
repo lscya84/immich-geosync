@@ -26,6 +26,9 @@ function validateRulePayload(body) {
   if (!body.name || typeof body.name !== 'string') return 'name은 필수입니다.';
   if (!['point', 'polygon'].includes(body.ruleType)) return 'ruleType은 point 또는 polygon이어야 합니다.';
   if (!body.geometry || typeof body.geometry !== 'object') return 'geometry는 필수입니다.';
+  if (body.applyAsOverride === false && body.treatAsSingleCluster !== true) {
+    return 'override 또는 single cluster 중 하나는 활성화되어야 합니다.';
+  }
   return null;
 }
 

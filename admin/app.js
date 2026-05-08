@@ -6,7 +6,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const clusterLayer = L.layerGroup().addTo(map);
 const ruleLayer = L.layerGroup().addTo(map);
-const groupLayer = L.layerGroup().addTo(map);
 const draftLayer = L.layerGroup().addTo(map);
 
 let drawMode = null;
@@ -54,47 +53,6 @@ function setPreviewOutput(value) {
   document.getElementById('preview-output').textContent = value;
 }
 
-function renderGroups(groups) {
-  const list = document.getElementById('group-list');
-  list.innerHTML = '';
-  groupLayer.clearLayers();
-
-  groups.forEach((group) => {
-    const item = document.createElement('li');
-    item.className = 'rule-item';
-    item.innerHTML = `
-      <strong>${group.name}</strong>
-      <div>manual cluster group</div>
-      <div class="rule-actions">
-        <button type="button" data-action="preview">preview</button>
-        <button type="button" data-action="delete">delete</button>
-      </div>
-    `;
-    list.appendChild(item);
-
-    item.querySelector('[data-action="preview"]').addEventListener('click', async () => {
-      const result = await fetchJson(`/api/groups/${group.id}/preview`, { method: 'POST' });
-      setPreviewOutput(JSON.stringify(result, null, 2));
-    });
-
-    item.querySelector('[data-action="delete"]').addEventListener('click', async () => {
-      if (!confirm(`group \"${group.name}\" 를 삭제할까요?`)) return;
-      const res = await fetch(`/api/groups/${group.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || '삭제 실패');
-      }
-      setPreviewOutput(`삭제 완료: ${group.name}`);
-      await loadGroups();
-    });
-
-    if (group.geometry?.type === 'Polygon') {
-      const latlngs = group.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-      L.polygon(latlngs, { color: '#7c3aed', weight: 2, fillOpacity: 0.08 }).bindPopup(group.name).addTo(groupLayer);
-    }
-  });
-}
-
 function renderRules(rules) {
   const list = document.getElementById('rule-list');
   list.innerHTML = '';
@@ -107,6 +65,7 @@ function renderRules(rules) {
       <strong>${rule.name}</strong>
       <div>type: ${rule.ruleType}</div>
       <div>priority: ${rule.priority}</div>
+      <div>override: ${rule.applyAsOverride ? 'on' : 'off'} / single cluster: ${rule.treatAsSingleCluster ? 'on' : 'off'}</div>
       <div>${rule.state || ''} ${rule.city || ''} ${rule.building || ''}</div>
       <div class="rule-actions">
         <button type="button" data-action="preview">preview</button>
@@ -148,7 +107,11 @@ function renderRules(rules) {
 
     if (rule.geometry?.type === 'Polygon') {
       const latlngs = rule.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-      L.polygon(latlngs, { color: '#2563eb' }).bindPopup(rule.name).addTo(ruleLayer);
+      L.polygon(latlngs, {
+        color: rule.treatAsSingleCluster ? '#7c3aed' : '#2563eb',
+        weight: rule.treatAsSingleCluster ? 3 : 2,
+        fillOpacity: rule.treatAsSingleCluster ? 0.12 : 0.08,
+      }).bindPopup(rule.name).addTo(ruleLayer);
     }
   });
 }
@@ -178,11 +141,6 @@ async function loadRules() {
   renderRules(data.rules);
 }
 
-async function loadGroups() {
-  const data = await fetchJson('/api/groups');
-  renderGroups(data.groups);
-}
-
 async function loadClusters() {
   const data = await fetchJson('/api/clusters');
   renderClusters(data.clusters);
@@ -210,37 +168,7 @@ document.getElementById('finish-shape').addEventListener('click', () => {
   alert('도형이 준비되었습니다. 왼쪽 폼에서 저장하세요.');
 });
 document.getElementById('refresh-rules').addEventListener('click', loadRules);
-document.getElementById('refresh-groups').addEventListener('click', loadGroups);
 document.getElementById('refresh-clusters').addEventListener('click', loadClusters);
-
-document.getElementById('group-form').addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const geometry = getDraftGeometry();
-  if (!geometry || geometry.type !== 'Polygon') {
-    alert('먼저 polygon을 그려주세요.');
-    return;
-  }
-
-  const formData = new FormData(event.target);
-  const payload = {
-    name: formData.get('name'),
-    geometry,
-    enabled: formData.get('enabled') === 'on',
-  };
-
-  await fetchJson('/api/groups', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  event.target.reset();
-  event.target.enabled.checked = true;
-  draftPoints = [];
-  renderDraft();
-  await loadGroups();
-  alert('group이 저장되었습니다.');
-});
 
 document.getElementById('rule-form').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -260,6 +188,8 @@ document.getElementById('rule-form').addEventListener('submit', async (event) =>
     city: formData.get('city'),
     building: formData.get('building'),
     priority: Number(formData.get('priority') || 100),
+    applyAsOverride: formData.get('applyAsOverride') === 'on',
+    treatAsSingleCluster: formData.get('treatAsSingleCluster') === 'on',
     enabled: formData.get('enabled') === 'on',
   };
 
@@ -272,6 +202,8 @@ document.getElementById('rule-form').addEventListener('submit', async (event) =>
   event.target.reset();
   event.target.country.value = '대한민국';
   event.target.priority.value = 100;
+  event.target.applyAsOverride.checked = true;
+  event.target.treatAsSingleCluster.checked = false;
   event.target.enabled.checked = true;
   draftPoints = [];
   renderDraft();
@@ -279,7 +211,7 @@ document.getElementById('rule-form').addEventListener('submit', async (event) =>
   alert('rule이 저장되었습니다.');
 });
 
-Promise.all([loadRules(), loadGroups(), loadClusters()]).catch((error) => {
+Promise.all([loadRules(), loadClusters()]).catch((error) => {
   console.error(error);
   alert(error.message);
 });
