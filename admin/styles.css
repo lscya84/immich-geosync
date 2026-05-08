@@ -162,6 +162,13 @@ button:disabled {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
 }
 
+.midpoint-handle {
+  width: 14px;
+  height: 14px;
+  background: #2563eb;
+  opacity: 0.9;
+}
+
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;

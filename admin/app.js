@@ -9,6 +9,7 @@ const ruleLayer = L.layerGroup().addTo(map);
 const draftLayer = L.layerGroup().addTo(map);
 const editLayer = L.layerGroup().addTo(map);
 
+const ruleForm = document.getElementById('rule-form');
 const saveEditButton = document.getElementById('save-edit');
 const cancelEditButton = document.getElementById('cancel-edit');
 
@@ -19,6 +20,7 @@ let currentRules = [];
 let editingRuleId = null;
 let editingPolygon = null;
 let editingHandles = [];
+let editingMidpoints = [];
 let editingRuleSnapshot = null;
 
 function resetDraft() {
@@ -73,6 +75,15 @@ function getVertexIcon() {
   });
 }
 
+function getMidpointIcon() {
+  return L.divIcon({
+    className: '',
+    html: '<div class="vertex-handle midpoint-handle"></div>',
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+}
+
 function setEditingButtons(enabled) {
   saveEditButton.disabled = !enabled;
   cancelEditButton.disabled = !enabled;
@@ -86,6 +97,29 @@ function clearEditingArtifacts() {
   editLayer.clearLayers();
   editingPolygon = null;
   editingHandles = [];
+  editingMidpoints = [];
+}
+
+function resetRuleForm() {
+  ruleForm.reset();
+  ruleForm.country.value = '대한민국';
+  ruleForm.priority.value = 100;
+  ruleForm.applyAsOverride.checked = true;
+  ruleForm.treatAsSingleCluster.checked = false;
+  ruleForm.enabled.checked = true;
+}
+
+function fillRuleForm(rule) {
+  ruleForm.name.value = rule.name || '';
+  ruleForm.ruleType.value = rule.ruleType || 'polygon';
+  ruleForm.country.value = rule.country || '대한민국';
+  ruleForm.state.value = rule.state || '';
+  ruleForm.city.value = rule.city || '';
+  ruleForm.building.value = rule.building || '';
+  ruleForm.priority.value = rule.priority ?? 100;
+  ruleForm.applyAsOverride.checked = rule.applyAsOverride !== false;
+  ruleForm.treatAsSingleCluster.checked = rule.treatAsSingleCluster === true;
+  ruleForm.enabled.checked = rule.enabled !== false;
 }
 
 function cancelEditing(silent = true) {
@@ -100,45 +134,108 @@ function polygonGeometryToLatLngs(geometry) {
   return (geometry.coordinates || []).slice(0, -1).map(([lng, lat]) => L.latLng(lat, lng));
 }
 
+function getEditingLatLngs() {
+  return editingPolygon?.getLatLngs()?.[0] || [];
+}
+
 function getEditingGeometry() {
   if (!editingPolygon) return null;
-  const latlngs = editingPolygon.getLatLngs()[0] || [];
+  const latlngs = getEditingLatLngs();
   if (latlngs.length < 3) return null;
   const coordinates = latlngs.map((p) => [p.lng, p.lat]);
   coordinates.push([latlngs[0].lng, latlngs[0].lat]);
   return { type: 'Polygon', coordinates };
 }
 
+function setEditingLatLngs(latlngs) {
+  if (!editingPolygon) return;
+  editingPolygon.setLatLngs(latlngs);
+}
+
 function syncPolygonFromHandles() {
   if (!editingPolygon) return;
   const latlngs = editingHandles.map((handle) => handle.getLatLng());
-  editingPolygon.setLatLngs(latlngs);
+  setEditingLatLngs(latlngs);
+}
+
+function midpoint(a, b) {
+  return L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
+}
+
+function addVertexAt(index, latlng) {
+  const latlngs = [...getEditingLatLngs()];
+  latlngs.splice(index, 0, latlng);
+  setEditingLatLngs(latlngs);
+  renderEditHandles();
+}
+
+function removeVertexAt(index) {
+  const latlngs = [...getEditingLatLngs()];
+  if (latlngs.length <= 3) {
+    alert('polygon은 최소 3개의 꼭짓점이 필요합니다.');
+    return;
+  }
+  latlngs.splice(index, 1);
+  setEditingLatLngs(latlngs);
+  renderEditHandles();
 }
 
 function renderEditHandles() {
   if (!editingPolygon) return;
-  editingHandles.forEach((handle) => editLayer.removeLayer(handle));
+  editLayer.clearLayers();
+  editLayer.addLayer(editingPolygon);
   editingHandles = [];
+  editingMidpoints = [];
 
-  const latlngs = editingPolygon.getLatLngs()[0] || [];
+  const latlngs = [...getEditingLatLngs()];
+
   latlngs.forEach((latlng, index) => {
     const marker = L.marker(latlng, {
       draggable: true,
       icon: getVertexIcon(),
       autoPan: true,
       keyboard: false,
+      bubblingMouseEvents: false,
     });
+
     marker.on('drag', () => {
       latlngs[index] = marker.getLatLng();
-      editingPolygon.setLatLngs(latlngs);
+      setEditingLatLngs(latlngs);
     });
+
     marker.on('dragend', () => {
       syncPolygonFromHandles();
+      renderEditHandles();
       setPreviewOutput(`편집 중: ${editingRuleSnapshot?.name || ''} / 꼭짓점 ${index + 1} 이동됨`);
     });
+
+    marker.on('dblclick', (event) => {
+      L.DomEvent.stop(event);
+      removeVertexAt(index);
+      setPreviewOutput(`편집 중: ${editingRuleSnapshot?.name || ''} / 꼭짓점 ${index + 1} 삭제됨`);
+    });
+
     marker.addTo(editLayer);
     editingHandles.push(marker);
   });
+
+  for (let i = 0; i < latlngs.length; i += 1) {
+    const nextIndex = (i + 1) % latlngs.length;
+    const mid = midpoint(latlngs[i], latlngs[nextIndex]);
+    const marker = L.marker(mid, {
+      draggable: false,
+      icon: getMidpointIcon(),
+      keyboard: false,
+      bubblingMouseEvents: false,
+    });
+    marker.on('click', (event) => {
+      L.DomEvent.stop(event);
+      addVertexAt(nextIndex, mid);
+      setPreviewOutput(`편집 중: ${editingRuleSnapshot?.name || ''} / 선분에 꼭짓점 추가됨`);
+    });
+    marker.addTo(editLayer);
+    editingMidpoints.push(marker);
+  }
 }
 
 function startEditingRule(ruleId) {
@@ -152,6 +249,7 @@ function startEditingRule(ruleId) {
 
   editingRuleId = ruleId;
   editingRuleSnapshot = JSON.parse(JSON.stringify(rule));
+  fillRuleForm(editingRuleSnapshot);
   const latlngs = polygonGeometryToLatLngs(rule.geometry);
   editingPolygon = L.polygon(latlngs, {
     color: '#ef4444',
@@ -162,7 +260,24 @@ function startEditingRule(ruleId) {
   renderEditHandles();
   setEditingButtons(true);
   map.fitBounds(editingPolygon.getBounds(), { padding: [20, 20] });
-  setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점을 드래그한 뒤 '편집 저장'을 누르세요.`);
+  setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점을 드래그해 이동, 작은 점 탭으로 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.`);
+}
+
+function getRulePayloadFromForm(geometry) {
+  const formData = new FormData(ruleForm);
+  return {
+    name: formData.get('name'),
+    ruleType: formData.get('ruleType'),
+    geometry,
+    country: formData.get('country'),
+    state: formData.get('state'),
+    city: formData.get('city'),
+    building: formData.get('building'),
+    priority: Number(formData.get('priority') || 100),
+    applyAsOverride: formData.get('applyAsOverride') === 'on',
+    treatAsSingleCluster: formData.get('treatAsSingleCluster') === 'on',
+    enabled: formData.get('enabled') === 'on',
+  };
 }
 
 async function saveEditing() {
@@ -170,19 +285,8 @@ async function saveEditing() {
   const geometry = getEditingGeometry();
   if (!geometry) throw new Error('유효한 polygon이 아닙니다.');
 
-  const payload = {
-    name: editingRuleSnapshot.name,
-    ruleType: editingRuleSnapshot.ruleType,
-    geometry,
-    country: editingRuleSnapshot.country,
-    state: editingRuleSnapshot.state,
-    city: editingRuleSnapshot.city,
-    building: editingRuleSnapshot.building,
-    priority: Number(editingRuleSnapshot.priority || 100),
-    applyAsOverride: editingRuleSnapshot.applyAsOverride !== false,
-    treatAsSingleCluster: editingRuleSnapshot.treatAsSingleCluster === true,
-    enabled: editingRuleSnapshot.enabled !== false,
-  };
+  const payload = getRulePayloadFromForm(geometry);
+  payload.ruleType = 'polygon';
 
   const result = await fetchJson(`/api/rules/${editingRuleId}`, {
     method: 'PUT',
@@ -242,7 +346,10 @@ function renderRules(rules) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '삭제 실패');
       }
-      if (editingRuleId === rule.id) cancelEditing();
+      if (editingRuleId === rule.id) {
+        cancelEditing();
+        resetRuleForm();
+      }
       setPreviewOutput(`삭제 완료: ${rule.name}`);
       await loadRules();
     });
@@ -328,30 +435,26 @@ saveEditButton.addEventListener('click', () => saveEditing().catch((error) => {
   console.error(error);
   alert(error.message);
 }));
-cancelEditButton.addEventListener('click', () => cancelEditing(false));
+cancelEditButton.addEventListener('click', () => {
+  cancelEditing(false);
+  resetRuleForm();
+});
 
-document.getElementById('rule-form').addEventListener('submit', async (event) => {
+ruleForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  if (editingRuleId) {
+    await saveEditing();
+    resetRuleForm();
+    return;
+  }
+
   const geometry = getDraftGeometry();
   if (!geometry) {
     alert('먼저 지도에서 point 또는 polygon을 그려주세요.');
     return;
   }
 
-  const formData = new FormData(event.target);
-  const payload = {
-    name: formData.get('name'),
-    ruleType: formData.get('ruleType'),
-    geometry,
-    country: formData.get('country'),
-    state: formData.get('state'),
-    city: formData.get('city'),
-    building: formData.get('building'),
-    priority: Number(formData.get('priority') || 100),
-    applyAsOverride: formData.get('applyAsOverride') === 'on',
-    treatAsSingleCluster: formData.get('treatAsSingleCluster') === 'on',
-    enabled: formData.get('enabled') === 'on',
-  };
+  const payload = getRulePayloadFromForm(geometry);
 
   await fetchJson('/api/rules', {
     method: 'POST',
@@ -359,17 +462,13 @@ document.getElementById('rule-form').addEventListener('submit', async (event) =>
     body: JSON.stringify(payload),
   });
 
-  event.target.reset();
-  event.target.country.value = '대한민국';
-  event.target.priority.value = 100;
-  event.target.applyAsOverride.checked = true;
-  event.target.treatAsSingleCluster.checked = false;
-  event.target.enabled.checked = true;
+  resetRuleForm();
   resetDraft();
   await loadRules();
   alert('rule이 저장되었습니다.');
 });
 
+resetRuleForm();
 Promise.all([loadRules(), loadClusters()]).catch((error) => {
   console.error(error);
   alert(error.message);
