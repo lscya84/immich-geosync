@@ -4,6 +4,10 @@ html, body {
   font-family: Arial, sans-serif;
 }
 
+body {
+  background: #f3f4f6;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 360px 1fr;
@@ -15,6 +19,7 @@ html, body {
   padding: 16px;
   overflow: auto;
   background: #fafafa;
+  -webkit-overflow-scrolling: touch;
 }
 
 .map-wrap {
@@ -29,10 +34,14 @@ html, body {
   border-bottom: 1px solid #ddd;
   background: #fff;
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 500;
 }
 
 #map {
   flex: 1;
+  min-height: 55vh;
 }
 
 h1 {
@@ -60,11 +69,21 @@ input, select, button {
   width: 100%;
   box-sizing: border-box;
   margin-top: 4px;
-  padding: 8px;
+  padding: 10px 12px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #fff;
 }
 
 button {
   cursor: pointer;
+  min-height: 44px;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .checkbox {
@@ -104,6 +123,10 @@ button {
   border-radius: 8px;
 }
 
+.rule-item div {
+  word-break: break-word;
+}
+
 .rule-item strong {
   display: block;
 }
@@ -128,4 +151,59 @@ button {
   font-size: 12px;
   max-height: 260px;
   overflow: auto;
+}
+
+.vertex-handle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(55vh, 1fr);
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid #ddd;
+    max-height: none;
+  }
+
+  .map-wrap {
+    min-height: 60vh;
+  }
+
+  .toolbar button {
+    width: calc(50% - 4px);
+  }
+}
+
+@media (max-width: 560px) {
+  .sidebar {
+    padding: 12px;
+  }
+
+  .toolbar {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .toolbar button {
+    width: 100%;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  .rule-actions {
+    flex-direction: column;
+  }
 }
