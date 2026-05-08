@@ -323,6 +323,29 @@ async function applyRuleById(ruleId) {
   setPreviewOutput(JSON.stringify(result, null, 2));
 }
 
+async function previewRuleById(ruleId) {
+  const result = await fetchJson(`/api/rules/${ruleId}/preview`, { method: 'POST' });
+  setPreviewOutput(JSON.stringify(result, null, 2));
+}
+
+async function deleteRuleById(ruleId) {
+  const rule = getRuleById(ruleId);
+  if (!rule) throw new Error('rule을 찾을 수 없습니다.');
+  if (!confirm(`rule \"${rule.name}\" 를 삭제할까요?`)) return false;
+  const res = await fetch(`/api/rules/${ruleId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || '삭제 실패');
+  }
+  if (editingRuleId === rule.id) {
+    cancelEditing();
+    resetRuleForm();
+  }
+  setPreviewOutput(`삭제 완료: ${rule.name}`);
+  await loadRules();
+  return true;
+}
+
 function renderRules(rules) {
   currentRules = rules;
   const list = document.getElementById('rule-list');
@@ -348,15 +371,12 @@ function renderRules(rules) {
     list.appendChild(item);
 
     item.querySelector('[data-action="preview"]').addEventListener('click', async () => {
-      const result = await fetchJson(`/api/rules/${rule.id}/preview`, { method: 'POST' });
-      setPreviewOutput(JSON.stringify(result, null, 2));
+      await previewRuleById(rule.id);
     });
 
     item.querySelector('[data-action="apply"]').addEventListener('click', async () => {
       if (!confirm(`rule \"${rule.name}\" 를 즉시 적용할까요?`)) return;
-      const result = await fetchJson(`/api/rules/${rule.id}/apply`, { method: 'POST' });
-      setPreviewOutput(JSON.stringify(result, null, 2));
-      await loadClusters();
+      await applyRuleById(rule.id);
     });
 
     item.querySelector('[data-action="edit"]').addEventListener('click', async () => {
@@ -364,18 +384,7 @@ function renderRules(rules) {
     });
 
     item.querySelector('[data-action="delete"]').addEventListener('click', async () => {
-      if (!confirm(`rule \"${rule.name}\" 를 삭제할까요?`)) return;
-      const res = await fetch(`/api/rules/${rule.id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || '삭제 실패');
-      }
-      if (editingRuleId === rule.id) {
-        cancelEditing();
-        resetRuleForm();
-      }
-      setPreviewOutput(`삭제 완료: ${rule.name}`);
-      await loadRules();
+      await deleteRuleById(rule.id);
     });
 
     if (rule.geometry?.type === 'Point') {
@@ -391,13 +400,30 @@ function renderRules(rules) {
         color: rule.treatAsSingleCluster ? '#7c3aed' : '#2563eb',
         weight: rule.treatAsSingleCluster ? 3 : 2,
         fillOpacity: rule.treatAsSingleCluster ? 0.12 : 0.08,
-      }).bindPopup(`${rule.name}<br><button type="button" data-rule-edit="${rule.id}">편집</button>`);
+      }).bindPopup(`
+        <div>
+          <strong>${rule.name}</strong>
+          <div>${rule.state || ''} ${rule.city || ''}</div>
+          <div class="popup-actions">
+            <button type="button" data-rule-preview="${rule.id}">preview</button>
+            <button type="button" data-rule-apply="${rule.id}">apply</button>
+            <button type="button" data-rule-edit="${rule.id}">edit</button>
+            <button type="button" data-rule-delete="${rule.id}">delete</button>
+          </div>
+        </div>
+      `);
 
       polygon.on('popupopen', (event) => {
-        const button = event.popup.getElement()?.querySelector(`[data-rule-edit="${rule.id}"]`);
-        if (button) {
-          button.addEventListener('click', () => startEditingRule(rule.id), { once: true });
-        }
+        const root = event.popup.getElement();
+        const previewButton = root?.querySelector(`[data-rule-preview="${rule.id}"]`);
+        const applyButton = root?.querySelector(`[data-rule-apply="${rule.id}"]`);
+        const editButton = root?.querySelector(`[data-rule-edit="${rule.id}"]`);
+        const deleteButton = root?.querySelector(`[data-rule-delete="${rule.id}"]`);
+
+        if (previewButton) previewButton.addEventListener('click', () => previewRuleById(rule.id), { once: true });
+        if (applyButton) applyButton.addEventListener('click', () => applyRuleById(rule.id), { once: true });
+        if (editButton) editButton.addEventListener('click', () => startEditingRule(rule.id), { once: true });
+        if (deleteButton) deleteButton.addEventListener('click', () => deleteRuleById(rule.id), { once: true });
       });
 
       polygon.addTo(ruleLayer);
