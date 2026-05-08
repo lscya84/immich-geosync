@@ -39,19 +39,24 @@ body {
   margin-top: 10px;
 }
 
-.form-action-bar {
+.form-action-bar,
+.floating-action-bar {
   display: flex;
   gap: 8px;
-  position: sticky;
-  bottom: -10px;
-  padding-top: 10px;
-  padding-bottom: 6px;
-  background: linear-gradient(to top, #fafafa 70%, rgba(250, 250, 250, 0.7));
 }
 
-.form-action-bar button {
+.form-action-bar button,
+.floating-action-bar button {
   flex: 1;
   margin-top: 0;
+}
+
+.floating-action-bar {
+  position: sticky;
+  bottom: 0;
+  padding-top: 12px;
+  padding-bottom: 4px;
+  background: linear-gradient(to top, #fafafa 78%, rgba(250, 250, 250, 0.7));
 }
 
 .primary-action {
@@ -331,6 +336,10 @@ button:disabled {
   }
 
   .form-action-bar {
+    display: none;
+  }
+
+  .floating-action-bar {
     position: fixed;
     left: 0;
     bottom: 0;

@@ -10,6 +10,8 @@ const draftLayer = L.layerGroup().addTo(map);
 const editLayer = L.layerGroup().addTo(map);
 
 const ruleForm = document.getElementById('rule-form');
+const saveRuleButton = document.getElementById('save-rule-button');
+const saveApplyRuleButton = document.getElementById('save-apply-rule-button');
 const saveEditButton = document.getElementById('save-edit');
 const cancelEditButton = document.getElementById('cancel-edit');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
@@ -486,9 +488,7 @@ cancelEditButton.addEventListener('click', () => {
   resetRuleForm();
 });
 
-ruleForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const submitMode = event.submitter?.dataset?.submitMode || 'save';
+async function handleRuleSubmit(submitMode) {
   if (editingRuleId) {
     const savedRule = await saveEditing();
     if (submitMode === 'save-apply' && savedRule?.id) {
@@ -521,7 +521,26 @@ ruleForm.addEventListener('submit', async (event) => {
   await loadRules();
   alert('rule이 저장되었습니다.');
   if (isMobileLayout()) setMobilePanelOpen(false);
+}
+
+ruleForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const submitMode = event.submitter?.dataset?.submitMode || 'save';
+  await handleRuleSubmit(submitMode);
 });
+
+async function submitRuleForm(mode) {
+  await handleRuleSubmit(mode);
+}
+
+saveRuleButton.addEventListener('click', () => submitRuleForm('save').catch((error) => {
+  console.error(error);
+  alert(error.message);
+}));
+saveApplyRuleButton.addEventListener('click', () => submitRuleForm('save-apply').catch((error) => {
+  console.error(error);
+  alert(error.message);
+}));
 
 resetRuleForm();
 setMobilePanelOpen(false);
