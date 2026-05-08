@@ -12,6 +12,8 @@ const editLayer = L.layerGroup().addTo(map);
 const ruleForm = document.getElementById('rule-form');
 const saveEditButton = document.getElementById('save-edit');
 const cancelEditButton = document.getElementById('cancel-edit');
+const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
+const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
 
 let drawMode = null;
 let draftPoints = [];
@@ -23,6 +25,16 @@ let editingHandles = [];
 let editingMidpoints = [];
 let editingRuleSnapshot = null;
 
+function isMobileLayout() {
+  return window.matchMedia('(max-width: 900px)').matches;
+}
+
+function setMobilePanelOpen(open) {
+  document.body.classList.toggle('mobile-panel-open', open);
+  mobilePanelToggle.textContent = open ? '패널 닫기' : '패널 열기';
+  mobilePanelToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
 function resetDraft() {
   draftPoints = [];
   renderDraft();
@@ -32,6 +44,7 @@ function setDrawMode(mode) {
   drawMode = mode;
   resetDraft();
   cancelEditing();
+  if (isMobileLayout()) setMobilePanelOpen(false);
 }
 
 function renderDraft() {
@@ -261,6 +274,7 @@ function startEditingRule(ruleId) {
   setEditingButtons(true);
   map.fitBounds(editingPolygon.getBounds(), { padding: [20, 20] });
   setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점을 드래그해 이동, 작은 점 탭으로 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.`);
+  if (isMobileLayout()) setMobilePanelOpen(true);
 }
 
 function getRulePayloadFromForm(geometry) {
@@ -297,6 +311,7 @@ async function saveEditing() {
   cancelEditing();
   await loadRules();
   setPreviewOutput(JSON.stringify({ message: 'polygon 수정 저장 완료', rule: result.rule }, null, 2));
+  if (isMobileLayout()) setMobilePanelOpen(false);
 }
 
 function renderRules(rules) {
@@ -431,6 +446,8 @@ document.getElementById('finish-shape').addEventListener('click', () => {
 });
 document.getElementById('refresh-rules').addEventListener('click', loadRules);
 document.getElementById('refresh-clusters').addEventListener('click', loadClusters);
+mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
+mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
 saveEditButton.addEventListener('click', () => saveEditing().catch((error) => {
   console.error(error);
   alert(error.message);
@@ -466,9 +483,11 @@ ruleForm.addEventListener('submit', async (event) => {
   resetDraft();
   await loadRules();
   alert('rule이 저장되었습니다.');
+  if (isMobileLayout()) setMobilePanelOpen(false);
 });
 
 resetRuleForm();
+setMobilePanelOpen(false);
 Promise.all([loadRules(), loadClusters()]).catch((error) => {
   console.error(error);
   alert(error.message);

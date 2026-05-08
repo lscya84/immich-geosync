@@ -8,6 +8,11 @@ body {
   background: #f3f4f6;
 }
 
+.mobile-panel-toggle,
+.mobile-panel-backdrop {
+  display: none;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 360px 1fr;
@@ -172,19 +177,62 @@ button:disabled {
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(55vh, 1fr);
-    height: auto;
+    height: 100vh;
     min-height: 100vh;
   }
 
   .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid #ddd;
-    max-height: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(88vw, 420px);
+    max-width: 420px;
+    z-index: 1200;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+    border-right: 1px solid #ddd;
+    border-bottom: 0;
+  }
+
+  body.mobile-panel-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .mobile-panel-toggle {
+    display: block;
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 1300;
+    width: auto;
+    min-width: 120px;
+    padding: 12px 16px;
+    border-radius: 999px;
+    background: #111827;
+    color: #fff;
+    border: 0;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  }
+
+  .mobile-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.4);
+    z-index: 1100;
+  }
+
+  body.mobile-panel-open .mobile-panel-backdrop {
+    display: block;
   }
 
   .map-wrap {
-    min-height: 60vh;
+    min-height: 100vh;
+  }
+
+  #map {
+    min-height: calc(100vh - 80px);
   }
 
   .toolbar button {
