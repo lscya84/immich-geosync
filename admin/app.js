@@ -14,6 +14,8 @@ const saveEditButton = document.getElementById('save-edit');
 const cancelEditButton = document.getElementById('cancel-edit');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
+const toolbarMoreToggle = document.getElementById('toolbar-more-toggle');
+const toolbarSecondary = document.getElementById('toolbar-secondary');
 
 let drawMode = null;
 let draftPoints = [];
@@ -33,6 +35,21 @@ function setMobilePanelOpen(open) {
   document.body.classList.toggle('mobile-panel-open', open);
   mobilePanelToggle.textContent = open ? '패널 닫기' : '패널 열기';
   mobilePanelToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function setToolbarSecondaryOpen(open) {
+  toolbarSecondary.classList.toggle('is-open', open);
+  toolbarMoreToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  toolbarMoreToggle.textContent = open ? '닫기' : '더보기';
+}
+
+function toggleSection(sectionName) {
+  const section = document.querySelector(`.panel-section[data-section="${sectionName}"]`);
+  if (!section) return;
+  const isOpen = !section.classList.contains('is-open');
+  section.classList.toggle('is-open', isOpen);
+  const button = section.querySelector('.panel-section-toggle');
+  if (button) button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 }
 
 function resetDraft() {
@@ -275,6 +292,7 @@ function startEditingRule(ruleId) {
   map.fitBounds(editingPolygon.getBounds(), { padding: [20, 20] });
   setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점을 드래그해 이동, 작은 점 탭으로 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.`);
   if (isMobileLayout()) setMobilePanelOpen(true);
+  document.querySelector('.panel-section[data-section="editor"]')?.classList.add('is-open');
 }
 
 function getRulePayloadFromForm(geometry) {
@@ -448,6 +466,10 @@ document.getElementById('refresh-rules').addEventListener('click', loadRules);
 document.getElementById('refresh-clusters').addEventListener('click', loadClusters);
 mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
 mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
+toolbarMoreToggle.addEventListener('click', () => setToolbarSecondaryOpen(!toolbarSecondary.classList.contains('is-open')));
+document.querySelectorAll('[data-panel-toggle]').forEach((button) => {
+  button.addEventListener('click', () => toggleSection(button.dataset.panelToggle));
+});
 saveEditButton.addEventListener('click', () => saveEditing().catch((error) => {
   console.error(error);
   alert(error.message);
@@ -488,6 +510,7 @@ ruleForm.addEventListener('submit', async (event) => {
 
 resetRuleForm();
 setMobilePanelOpen(false);
+setToolbarSecondaryOpen(false);
 Promise.all([loadRules(), loadClusters()]).catch((error) => {
   console.error(error);
   alert(error.message);

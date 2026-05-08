@@ -20,8 +20,11 @@
         <h1>Cluster Map Editor</h1>
         <p class="muted">클러스터를 보고, 위치 override rule을 저장하는 1차 관리자 화면입니다.</p>
 
-        <section>
-          <h2>규칙 추가</h2>
+        <section class="panel-section is-open" data-section="editor">
+          <button class="panel-section-toggle" type="button" data-panel-toggle="editor" aria-expanded="true">
+            <span>규칙 추가</span>
+          </button>
+          <div class="panel-section-body">
           <form id="rule-form">
             <label>이름<input name="name" required /></label>
             <label>타입
@@ -41,31 +44,45 @@
             <button type="submit">현재 그린 도형으로 저장</button>
           </form>
           <p class="hint">point는 지도를 클릭 1회, polygon은 3개 이상 점을 찍고 완료하세요. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.</p>
+          </div>
         </section>
 
-        <section>
+        <section class="panel-section is-open" data-section="rules">
           <div class="section-header">
-            <h2>규칙 목록</h2>
+            <button class="panel-section-toggle" type="button" data-panel-toggle="rules" aria-expanded="true">
+              <span>규칙 목록</span>
+            </button>
             <button id="refresh-rules" type="button">새로고침</button>
           </div>
-          <ul id="rule-list" class="rule-list"></ul>
+          <div class="panel-section-body">
+            <ul id="rule-list" class="rule-list"></ul>
+          </div>
         </section>
 
-        <section>
-          <h2>미리보기 결과</h2>
-          <pre id="preview-output" class="preview-output">아직 실행하지 않았습니다.</pre>
+        <section class="panel-section" data-section="preview">
+          <button class="panel-section-toggle" type="button" data-panel-toggle="preview" aria-expanded="false">
+            <span>미리보기 결과</span>
+          </button>
+          <div class="panel-section-body">
+            <pre id="preview-output" class="preview-output">아직 실행하지 않았습니다.</pre>
+          </div>
         </section>
       </aside>
 
       <main class="map-wrap">
         <div class="toolbar">
-          <button id="start-point" type="button">Point 그리기</button>
-          <button id="start-polygon" type="button">Polygon 그리기</button>
-          <button id="finish-shape" type="button">도형 완료</button>
-          <button id="clear-shape" type="button">초기화</button>
+          <div class="toolbar-primary">
+            <button id="start-point" type="button">Point</button>
+            <button id="start-polygon" type="button">Polygon</button>
+            <button id="finish-shape" type="button">완료</button>
+          </div>
+          <button id="toolbar-more-toggle" class="toolbar-more-toggle" type="button" aria-expanded="false">더보기</button>
+          <div id="toolbar-secondary" class="toolbar-secondary">
+            <button id="clear-shape" type="button">초기화</button>
           <button id="save-edit" type="button" disabled>편집 저장</button>
           <button id="cancel-edit" type="button" disabled>편집 취소</button>
           <button id="refresh-clusters" type="button">클러스터 새로고침</button>
+          </div>
         </div>
         <div id="map"></div>
       </main>
