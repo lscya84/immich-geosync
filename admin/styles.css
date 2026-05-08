@@ -1,0 +1,129 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: Arial, sans-serif;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  border-right: 1px solid #ddd;
+  padding: 16px;
+  overflow: auto;
+  background: #fafafa;
+}
+
+.map-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+  background: #fff;
+  flex-wrap: wrap;
+}
+
+#map {
+  flex: 1;
+}
+
+h1 {
+  font-size: 22px;
+  margin-top: 0;
+}
+
+h2 {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.muted, .hint {
+  color: #666;
+  font-size: 13px;
+}
+
+label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+input, select, button {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 4px;
+  padding: 8px;
+}
+
+button {
+  cursor: pointer;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox input {
+  width: auto;
+  margin: 0;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-header button {
+  width: auto;
+}
+
+.rule-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rule-item {
+  padding: 10px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 8px;
+}
+
+.rule-item strong {
+  display: block;
+}
+
+.rule-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.rule-actions button {
+  width: auto;
+  flex: 1;
+}
+
+.preview-output {
+  white-space: pre-wrap;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+}

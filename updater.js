@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { reverseGeocode, translateLocation } = require('./lib/geocode');
+const { findMatchingRule, buildRuleAddress } = require('./lib/override-rules');
 
 const config = {
     naverId: (process.env.NAVER_CLIENT_ID || '').trim(),
@@ -228,6 +229,45 @@ async function getClusterAddress(client, cluster) {
     return { address, diagnostics: result?.diagnostics || null, cacheStatus: 'success' };
 }
 
+async function listEnabledOverrideRules(client) {
+    await client.query(`
+        CREATE TABLE IF NOT EXISTS "custom_geo_override_rules" (
+            "id" UUID PRIMARY KEY,
+            "name" VARCHAR NOT NULL,
+            "rule_type" VARCHAR NOT NULL,
+            "geometry" JSONB NOT NULL,
+            "country" VARCHAR DEFAULT '대한민국',
+            "state" VARCHAR DEFAULT '',
+            "city" VARCHAR DEFAULT '',
+            "building" VARCHAR DEFAULT '',
+            "priority" INTEGER NOT NULL DEFAULT 100,
+            "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+            "created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
+
+    const res = await client.query(`
+        SELECT "id", "name", "rule_type", "geometry", "country", "state", "city", "building", "priority", "enabled"
+        FROM "custom_geo_override_rules"
+        WHERE "enabled" = TRUE
+        ORDER BY "priority" ASC, "created_at" DESC
+    `);
+
+    return res.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        ruleType: row.rule_type,
+        geometry: row.geometry,
+        country: row.country,
+        state: row.state,
+        city: row.city,
+        building: row.building,
+        priority: row.priority,
+        enabled: row.enabled,
+    }));
+}
+
 async function bulkUpdateAssets(client, items) {
     if (!items.length) return 0;
 
@@ -342,6 +382,9 @@ async function main(forceUpdate = false) {
         const warmedCount = await warmUpCache(client);
         console.log(`[${nowKst()}] 🔥 캐시 워밍업 완료: ${warmedCount}건 적재`);
 
+        const overrideRules = await listEnabledOverrideRules(client);
+        console.log(`[${nowKst()}] 🗺️ 활성 override rule 로드: ${overrideRules.length}개`);
+
         let queryCondition = `WHERE "latitude" BETWEEN 33 AND 43 AND "longitude" BETWEEN 124 AND 132`;
         queryCondition += ` AND (COALESCE("country", '') IN ('', 'South Korea', '대한민국', 'Korea'))`;
 
@@ -365,11 +408,18 @@ async function main(forceUpdate = false) {
 
         console.log(`[${nowKst()}] 🧩 클러스터링 시작 (반경 ${config.clusterRadiusMeters}m)`);
         const clusters = clusterRows(res.rows, config.clusterRadiusMeters);
+        const overrideClusters = [];
         const fastTrackClusters = [];
         const negativeCacheClusters = [];
         const apiTrackClusters = [];
 
         for (const cluster of clusters) {
+            const overrideRule = findMatchingRule(cluster.centroidLat, cluster.centroidLon, overrideRules);
+            if (overrideRule) {
+                overrideClusters.push({ ...cluster, overrideRule, overrideAddress: buildRuleAddress(overrideRule) });
+                continue;
+            }
+
             const cached = addressCache.get(cluster.clusterKey);
             if (!cached) {
                 apiTrackClusters.push(cluster);
@@ -380,6 +430,7 @@ async function main(forceUpdate = false) {
             }
         }
 
+        const overridePhotos = overrideClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
         const fastTrackPhotos = fastTrackClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
         const negativeCachePhotos = negativeCacheClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
         const apiTrackPhotos = apiTrackClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
@@ -387,11 +438,13 @@ async function main(forceUpdate = false) {
         console.log(`[${nowKst()}] 🧭 대상 분류 완료`);
         console.log(` ├─ 전체 사진: ${res.rows.length}건`);
         console.log(` ├─ 전체 클러스터: ${clusters.length}개`);
+        console.log(` ├─ Override Track: ${overrideClusters.length}개 클러스터 / ${overridePhotos}장`);
         console.log(` ├─ Fast Track: ${fastTrackClusters.length}개 클러스터 / ${fastTrackPhotos}장`);
         console.log(` ├─ Negative Cache: ${negativeCacheClusters.length}개 클러스터 / ${negativeCachePhotos}장`);
         console.log(` └─ API Track: ${apiTrackClusters.length}개 클러스터 / ${apiTrackPhotos}장`);
 
         let totalUpdated = 0;
+        let overrideUpdated = 0;
         let fastTrackUpdated = 0;
         let apiTrackUpdated = 0;
         let negativeCacheSkippedClusters = negativeCacheClusters.length;
@@ -404,6 +457,19 @@ async function main(forceUpdate = false) {
         let apiProcessedClusters = 0;
         let apiProcessedPhotos = 0;
         const totalPhotos = apiTrackPhotos;
+
+        if (overrideClusters.length > 0) {
+            console.log(`[${nowKst()}] 🧷 Override Phase 시작: 수동 rule 적용 (${overrideClusters.length}개 / ${overridePhotos}장)`);
+            const overrideItems = [];
+            for (const cluster of overrideClusters) {
+                for (const assetId of cluster.assetIds) {
+                    overrideItems.push({ assetId, state: cluster.overrideAddress.state, city: cluster.overrideAddress.city });
+                }
+            }
+            overrideUpdated = await bulkUpdateAssets(client, overrideItems);
+            totalUpdated += overrideUpdated;
+            console.log(`[${nowKst()}] ✅ Override Phase 완료: ${overrideUpdated}건 반영`);
+        }
 
         console.log(`[${nowKst()}] ⚡ Phase 1 시작: 캐시 적중 클러스터 고속 처리 (${fastTrackClusters.length}개 / ${fastTrackPhotos}장)`);
 
@@ -479,9 +545,11 @@ async function main(forceUpdate = false) {
         console.log(`[${nowKst()}] 🎉 작업 완료 상세 리포트`);
         console.log(` ┌─ 캐시 워밍업 적재: ${warmedCount}건`);
         console.log(` ├─ 총 클러스터 수: ${clusters.length}개`);
+        console.log(` ├─ Override Track 클러스터: ${overrideClusters.length}개`);
         console.log(` ├─ Fast Track 클러스터: ${fastTrackClusters.length}개`);
         console.log(` ├─ Negative Cache 클러스터: ${negativeCacheSkippedClusters}개`);
         console.log(` ├─ API Track 클러스터: ${apiTrackClusters.length}개`);
+        console.log(` ├─ Override 반영: ${overrideUpdated}건`);
         console.log(` ├─ Fast Track 반영: ${fastTrackUpdated}건`);
         console.log(` ├─ Negative Cache 스킵 사진: ${negativeCacheSkippedPhotos}건`);
         console.log(` ├─ API Track 반영: ${apiTrackUpdated}건`);

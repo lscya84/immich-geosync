@@ -1,0 +1,14 @@
+{
+  "name": "immich-naver-reverse-geocoding",
+  "version": "1.4.2",
+  "private": true,
+  "scripts": {
+    "start": "node updater.js",
+    "admin": "node admin-server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  }
+}

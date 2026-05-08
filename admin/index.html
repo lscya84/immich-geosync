@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cluster Map Editor</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <h1>Cluster Map Editor</h1>
+        <p class="muted">클러스터를 보고, 위치 override rule을 저장하는 1차 관리자 화면입니다.</p>
+
+        <section>
+          <h2>규칙 추가</h2>
+          <form id="rule-form">
+            <label>이름<input name="name" required /></label>
+            <label>타입
+              <select name="ruleType">
+                <option value="point">point</option>
+                <option value="polygon">polygon</option>
+              </select>
+            </label>
+            <label>국가<input name="country" value="대한민국" /></label>
+            <label>시/도<input name="state" /></label>
+            <label>도시/구/동<input name="city" /></label>
+            <label>건물명<input name="building" /></label>
+            <label>우선순위<input type="number" name="priority" value="100" /></label>
+            <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성화</label>
+            <button type="submit">현재 그린 도형으로 저장</button>
+          </form>
+          <p class="hint">point는 지도를 클릭 1회, polygon은 3개 이상 점을 찍고 완료하세요.</p>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>규칙 목록</h2>
+            <button id="refresh-rules" type="button">새로고침</button>
+          </div>
+          <ul id="rule-list" class="rule-list"></ul>
+        </section>
+
+        <section>
+          <h2>미리보기 결과</h2>
+          <pre id="preview-output" class="preview-output">아직 실행하지 않았습니다.</pre>
+        </section>
+      </aside>
+
+      <main class="map-wrap">
+        <div class="toolbar">
+          <button id="start-point" type="button">Point 그리기</button>
+          <button id="start-polygon" type="button">Polygon 그리기</button>
+          <button id="finish-shape" type="button">도형 완료</button>
+          <button id="clear-shape" type="button">초기화</button>
+          <button id="refresh-clusters" type="button">클러스터 새로고침</button>
+        </div>
+        <div id="map"></div>
+      </main>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="/admin/app.js"></script>
+  </body>
+</html>
