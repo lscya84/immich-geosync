@@ -70,21 +70,12 @@ function renderDraft() {
   draftLayer.clearLayers();
   draftShape = null;
 
-  if (drawMode === 'point' && draftPoints.length === 1) {
-    draftShape = L.circleMarker(draftPoints[0], { radius: 8, color: 'red' }).addTo(draftLayer);
-  }
-
   if (drawMode === 'polygon' && draftPoints.length > 0) {
     draftShape = L.polygon(draftPoints, { color: 'red' }).addTo(draftLayer);
   }
 }
 
 function getDraftGeometry() {
-  if (drawMode === 'point' && draftPoints.length === 1) {
-    const p = draftPoints[0];
-    return { type: 'Point', coordinates: [p.lng, p.lat], radiusMeters: 20 };
-  }
-
   if (drawMode === 'polygon' && draftPoints.length >= 3) {
     const coordinates = draftPoints.map((p) => [p.lng, p.lat]);
     coordinates.push([draftPoints[0].lng, draftPoints[0].lat]);
@@ -143,7 +134,6 @@ function resetRuleForm() {
 
 function fillRuleForm(rule) {
   ruleForm.name.value = rule.name || '';
-  ruleForm.ruleType.value = rule.ruleType || 'polygon';
   ruleForm.country.value = rule.country || '대한민국';
   ruleForm.state.value = rule.state || '';
   ruleForm.city.value = rule.city || '';
@@ -301,7 +291,7 @@ function getRulePayloadFromForm(geometry) {
   const formData = new FormData(ruleForm);
   return {
     name: formData.get('name'),
-    ruleType: formData.get('ruleType'),
+    ruleType: 'polygon',
     geometry,
     country: formData.get('country'),
     state: formData.get('state'),
@@ -460,7 +450,6 @@ map.on('click', (event) => {
   renderDraft();
 });
 
-document.getElementById('start-point').addEventListener('click', () => setDrawMode('point'));
 document.getElementById('start-polygon').addEventListener('click', () => setDrawMode('polygon'));
 document.getElementById('clear-shape').addEventListener('click', () => resetDraft());
 document.getElementById('finish-shape').addEventListener('click', () => {

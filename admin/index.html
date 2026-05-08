@@ -27,12 +27,6 @@
           <div class="panel-section-body">
           <form id="rule-form">
             <label>이름<input name="name" required /></label>
-            <label>타입
-              <select name="ruleType">
-                <option value="point">point</option>
-                <option value="polygon">polygon</option>
-              </select>
-            </label>
             <label>국가<input name="country" value="대한민국" /></label>
             <label>시/도<input name="state" /></label>
             <label>도시/구/동<input name="city" /></label>
@@ -42,7 +36,7 @@
             <label class="checkbox"><input type="checkbox" name="treatAsSingleCluster" /> 폴리곤 내부를 단일 클러스터로 취급</label>
             <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성화</label>
           </form>
-          <p class="hint">point는 지도를 클릭 1회, polygon은 3개 이상 점을 찍고 완료하세요. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.</p>
+          <p class="hint">polygon은 3개 이상 점을 찍고 완료하세요. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.</p>
           </div>
         </section>
 
@@ -76,7 +70,6 @@
       <main class="map-wrap">
         <div class="toolbar">
           <div class="toolbar-primary">
-            <button id="start-point" type="button">Point</button>
             <button id="start-polygon" type="button">Polygon</button>
             <button id="finish-shape" type="button">완료</button>
           </div>

@@ -364,7 +364,7 @@ button:disabled {
   }
 
   .toolbar-primary button {
-    width: calc(33.333% - 4px);
+    width: calc(50% - 4px);
     min-width: 0;
     padding-left: 8px;
     padding-right: 8px;
