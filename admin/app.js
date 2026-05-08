@@ -16,8 +16,6 @@ const saveEditButton = document.getElementById('save-edit');
 const cancelEditButton = document.getElementById('cancel-edit');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
-const toolbarMoreToggle = document.getElementById('toolbar-more-toggle');
-const toolbarSecondary = document.getElementById('toolbar-secondary');
 
 let drawMode = null;
 let draftPoints = [];
@@ -37,12 +35,6 @@ function setMobilePanelOpen(open) {
   document.body.classList.toggle('mobile-panel-open', open);
   mobilePanelToggle.textContent = open ? '패널 닫기' : '패널 열기';
   mobilePanelToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
-
-function setToolbarSecondaryOpen(open) {
-  toolbarSecondary.classList.toggle('is-open', open);
-  toolbarMoreToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-  toolbarMoreToggle.textContent = open ? '닫기' : '더보기';
 }
 
 function toggleSection(sectionName) {
@@ -464,7 +456,6 @@ document.getElementById('refresh-rules').addEventListener('click', loadRules);
 document.getElementById('refresh-clusters').addEventListener('click', loadClusters);
 mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
 mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
-toolbarMoreToggle.addEventListener('click', () => setToolbarSecondaryOpen(!toolbarSecondary.classList.contains('is-open')));
 document.querySelectorAll('[data-panel-toggle]').forEach((button) => {
   button.addEventListener('click', () => toggleSection(button.dataset.panelToggle));
 });
@@ -533,7 +524,6 @@ saveApplyRuleButton.addEventListener('click', () => submitRuleForm('save-apply')
 
 resetRuleForm();
 setMobilePanelOpen(false);
-setToolbarSecondaryOpen(false);
 Promise.all([loadRules(), loadClusters()]).catch((error) => {
   console.error(error);
   alert(error.message);
