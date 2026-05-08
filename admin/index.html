@@ -48,6 +48,24 @@
         </section>
 
         <section>
+          <h2>클러스터 그룹 추가</h2>
+          <form id="group-form">
+            <label>그룹 이름<input name="name" required /></label>
+            <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성화</label>
+            <button type="submit">현재 폴리곤으로 그룹 저장</button>
+          </form>
+          <p class="hint">그룹은 polygon만 지원합니다. 이 영역 안의 점들은 하나의 수동 클러스터로 취급됩니다.</p>
+        </section>
+
+        <section>
+          <div class="section-header">
+            <h2>클러스터 그룹 목록</h2>
+            <button id="refresh-groups" type="button">새로고침</button>
+          </div>
+          <ul id="group-list" class="rule-list"></ul>
+        </section>
+
+        <section>
           <h2>미리보기 결과</h2>
           <pre id="preview-output" class="preview-output">아직 실행하지 않았습니다.</pre>
         </section>

@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { reverseGeocode, translateLocation } = require('./lib/geocode');
-const { findMatchingRule, buildRuleAddress } = require('./lib/override-rules');
+const { findMatchingRule, findMatchingGeometryEntity, buildRuleAddress } = require('./lib/override-rules');
 
 const config = {
     naverId: (process.env.NAVER_CLIENT_ID || '').trim(),
@@ -298,10 +298,47 @@ async function bulkUpdateAssets(client, items) {
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
-function clusterRows(rows, radiusMeters) {
-    const remaining = rows.map((row, index) => ({ ...row, __index: index }));
-    const clusters = [];
+function clusterRows(rows, radiusMeters, clusterGroups = []) {
+    const groupedMap = new Map();
+    const ungrouped = [];
 
+    for (const row of rows.map((item, index) => ({ ...item, __index: index }))) {
+        const group = findMatchingGeometryEntity(Number(row.latitude), Number(row.longitude), clusterGroups);
+        if (!group) {
+            ungrouped.push(row);
+            continue;
+        }
+
+        const key = `manual-group:${group.id}`;
+        if (!groupedMap.has(key)) {
+            groupedMap.set(key, {
+                clusterId: key,
+                clusterKey: key,
+                centroidLat: 0,
+                centroidLon: 0,
+                assetCount: 0,
+                assetIds: [],
+                points: [],
+                manualGroup: group,
+            });
+        }
+
+        const cluster = groupedMap.get(key);
+        cluster.points.push(row);
+        cluster.assetIds.push(row.assetId);
+        cluster.assetCount += 1;
+        cluster.centroidLat += parseFloat(row.latitude);
+        cluster.centroidLon += parseFloat(row.longitude);
+    }
+
+    const clusters = [];
+    for (const cluster of groupedMap.values()) {
+        cluster.centroidLat /= cluster.assetCount;
+        cluster.centroidLon /= cluster.assetCount;
+        clusters.push(cluster);
+    }
+
+    const remaining = [...ungrouped];
     while (remaining.length) {
         const seed = remaining.shift();
         const clusterItems = [seed];
@@ -333,6 +370,33 @@ function clusterRows(rows, radiusMeters) {
     }
 
     return clusters;
+}
+
+async function listEnabledClusterGroups(client) {
+    await client.query(`
+        CREATE TABLE IF NOT EXISTS "custom_geo_cluster_groups" (
+            "id" UUID PRIMARY KEY,
+            "name" VARCHAR NOT NULL,
+            "geometry" JSONB NOT NULL,
+            "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
+            "created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+    `);
+
+    const res = await client.query(`
+        SELECT "id", "name", "geometry", "enabled"
+        FROM "custom_geo_cluster_groups"
+        WHERE "enabled" = TRUE
+        ORDER BY "created_at" DESC
+    `);
+
+    return res.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        geometry: row.geometry,
+        enabled: row.enabled,
+    }));
 }
 
 async function main(forceUpdate = false) {
@@ -383,7 +447,9 @@ async function main(forceUpdate = false) {
         console.log(`[${nowKst()}] 🔥 캐시 워밍업 완료: ${warmedCount}건 적재`);
 
         const overrideRules = await listEnabledOverrideRules(client);
+        const clusterGroups = await listEnabledClusterGroups(client);
         console.log(`[${nowKst()}] 🗺️ 활성 override rule 로드: ${overrideRules.length}개`);
+        console.log(`[${nowKst()}] 🧩 활성 manual cluster group 로드: ${clusterGroups.length}개`);
 
         let queryCondition = `WHERE "latitude" BETWEEN 33 AND 43 AND "longitude" BETWEEN 124 AND 132`;
         queryCondition += ` AND (COALESCE("country", '') IN ('', 'South Korea', '대한민국', 'Korea'))`;
@@ -407,7 +473,7 @@ async function main(forceUpdate = false) {
         }
 
         console.log(`[${nowKst()}] 🧩 클러스터링 시작 (반경 ${config.clusterRadiusMeters}m)`);
-        const clusters = clusterRows(res.rows, config.clusterRadiusMeters);
+        const clusters = clusterRows(res.rows, config.clusterRadiusMeters, clusterGroups);
         const overrideClusters = [];
         const fastTrackClusters = [];
         const negativeCacheClusters = [];
