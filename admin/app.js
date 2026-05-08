@@ -330,6 +330,13 @@ async function saveEditing() {
   await loadRules();
   setPreviewOutput(JSON.stringify({ message: 'polygon 수정 저장 완료', rule: result.rule }, null, 2));
   if (isMobileLayout()) setMobilePanelOpen(false);
+  return result.rule;
+}
+
+async function applyRuleById(ruleId) {
+  const result = await fetchJson(`/api/rules/${ruleId}/apply`, { method: 'POST' });
+  await loadClusters();
+  setPreviewOutput(JSON.stringify(result, null, 2));
 }
 
 function renderRules(rules) {
@@ -481,8 +488,12 @@ cancelEditButton.addEventListener('click', () => {
 
 ruleForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  const submitMode = event.submitter?.dataset?.submitMode || 'save';
   if (editingRuleId) {
-    await saveEditing();
+    const savedRule = await saveEditing();
+    if (submitMode === 'save-apply' && savedRule?.id) {
+      await applyRuleById(savedRule.id);
+    }
     resetRuleForm();
     return;
   }
@@ -495,11 +506,15 @@ ruleForm.addEventListener('submit', async (event) => {
 
   const payload = getRulePayloadFromForm(geometry);
 
-  await fetchJson('/api/rules', {
+  const created = await fetchJson('/api/rules', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+
+  if (submitMode === 'save-apply' && created?.rule?.id) {
+    await applyRuleById(created.rule.id);
+  }
 
   resetRuleForm();
   resetDraft();
