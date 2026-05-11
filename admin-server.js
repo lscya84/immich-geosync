@@ -85,7 +85,7 @@ function getTileCenter(z, x, y) {
 
 function getNaverStaticTileUrl(req, variant) {
   const format = naverStaticMapFormat.replace(/^\./, '');
-  return `/map-tiles/naver/${variant}/{z}/{x}/{y}.${format}`;
+  return `${req.protocol}://${req.get('host')}/map-tiles/naver/${variant}/{z}/{x}/{y}.${format}`;
 }
 
 async function fetchNaverStaticTile({ z, x, y, maptype }) {
