@@ -30,6 +30,12 @@ const mapStyleDarkTileUrl = (process.env.IMMICH_MAP_STYLE_DARK_TILE_URL || mapSt
 const mapStyleLightAttribution = (process.env.IMMICH_MAP_STYLE_LIGHT_ATTRIBUTION || '© OpenStreetMap contributors').trim();
 const mapStyleDarkAttribution = (process.env.IMMICH_MAP_STYLE_DARK_ATTRIBUTION || mapStyleLightAttribution).trim();
 const mapStyleMaxZoom = Math.max(0, Math.min(22, parseInt(process.env.IMMICH_MAP_STYLE_MAX_ZOOM || '19', 10) || 19));
+const adminDebugLogs = /^(1|true|yes|on)$/i.test(String(process.env.ADMIN_DEBUG_LOGS || '').trim());
+
+function adminDebug(event, payload = {}) {
+  if (!adminDebugLogs) return;
+  console.log(`[admin-debug] ${JSON.stringify({ scope: 'admin-server', event, ...payload })}`);
+}
 
 app.use(express.json({ limit: '1mb' }));
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
@@ -261,7 +267,13 @@ app.get('/api/clusters', async (req, res) => {
       east: Number(req.query.east),
       zoom: Number(req.query.zoom),
     };
-    res.json({ clusters: await listClusters(bounds) });
+    const clusters = await listClusters(bounds);
+    adminDebug('api.clusters', {
+      bounds,
+      returnedClusters: clusters.length,
+      topClusterAssetCount: clusters[0]?.assetCount || 0,
+    });
+    res.json({ clusters });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -300,7 +312,18 @@ app.get('/api/clusters/assets', async (req, res) => {
     const assets = ruleId
       ? await getRuleClusterAssets(ruleId, pageLimit + 1, offset)
       : await getClusterAssets(latitude, longitude, pageLimit + 1, precision, offset);
-    res.json(paginateAssets(assets, pageLimit));
+    const page = paginateAssets(assets, pageLimit);
+    adminDebug('api.clusterAssets', {
+      ruleId,
+      latitude,
+      longitude,
+      precision,
+      limit: pageLimit,
+      offset,
+      returnedCount: page.assets.length,
+      hasMore: page.hasMore,
+    });
+    res.json(page);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -318,7 +341,16 @@ app.post('/api/clusters/assets/merge', async (req, res) => {
   try {
     const pageLimit = Math.max(1, Math.min(30, Number(limit) || 12));
     const assets = await getMergedClusterAssets(sources, pageLimit + 1, offset);
-    res.json(paginateAssets(assets, pageLimit));
+    const page = paginateAssets(assets, pageLimit);
+    adminDebug('api.mergedClusterAssets', {
+      sourceCount: sources.length,
+      sourcePreview: sources.slice(0, 8),
+      limit: pageLimit,
+      offset,
+      returnedCount: page.assets.length,
+      hasMore: page.hasMore,
+    });
+    res.json(page);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
