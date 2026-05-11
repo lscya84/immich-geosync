@@ -505,8 +505,13 @@ function resetDraft() {
   renderDraft();
 }
 
+function updateMapCursor() {
+  document.body.classList.toggle('is-drawing-polygon', drawMode === 'polygon');
+}
+
 function setDrawMode(mode) {
   drawMode = mode;
+  updateMapCursor();
   resetDraft();
   cancelEditing();
   setRuleModalOpen(false);
@@ -1255,6 +1260,7 @@ function bindUiEvents() {
 async function init() {
   resetRuleForm();
   updateEditorModeUi();
+  updateMapCursor();
   setMobilePanelOpen(false);
   resetPhotoPanel();
   bindUiEvents();

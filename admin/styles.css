@@ -163,6 +163,11 @@ body {
   background: #e5e7eb;
 }
 
+body.is-drawing-polygon #map,
+body.is-drawing-polygon #map * {
+  cursor: crosshair !important;
+}
+
 .map-stage #map {
   min-width: 0;
 }
