@@ -47,6 +47,7 @@ let activePhotoLoading = false;
 let activePhotoHasMore = false;
 let activePhotoRequestKey = 0;
 let activePhotoLastDateKey = '';
+let activePhotoSectionGrid = null;
 let activePhotoAssets = [];
 let activeLightboxIndex = -1;
 const photoPageSize = 12;
@@ -292,6 +293,7 @@ function resetPhotoPanel() {
   activePhotoHasMore = false;
   activePhotoRequestKey += 1;
   activePhotoLastDateKey = '';
+  activePhotoSectionGrid = null;
   activePhotoAssets = [];
   activeLightboxIndex = -1;
   clearOverlay(selectedPhotoMarker);
@@ -309,11 +311,31 @@ function appendPhotoCards(assets) {
   assets.forEach((asset) => {
     const dateKey = getAssetDateKey(asset.fileCreatedAt);
     if (dateKey && dateKey !== activePhotoLastDateKey) {
+      const section = document.createElement('section');
+      section.className = 'photo-date-section';
+
       const heading = document.createElement('div');
       heading.className = 'photo-date-group';
       heading.textContent = formatAssetDateGroupLabel(asset.fileCreatedAt);
-      fragment.appendChild(heading);
+      section.appendChild(heading);
+
+      const grid = document.createElement('div');
+      grid.className = 'photo-grid';
+      section.appendChild(grid);
+
+      fragment.appendChild(section);
       activePhotoLastDateKey = dateKey;
+      activePhotoSectionGrid = grid;
+    }
+
+    if (!activePhotoSectionGrid) {
+      const section = document.createElement('section');
+      section.className = 'photo-date-section';
+      const grid = document.createElement('div');
+      grid.className = 'photo-grid';
+      section.appendChild(grid);
+      fragment.appendChild(section);
+      activePhotoSectionGrid = grid;
     }
 
     const link = document.createElement('a');
@@ -335,7 +357,7 @@ function appendPhotoCards(assets) {
         image.src = asset.previewUrl;
       }, { once: true });
     }
-    fragment.appendChild(link);
+    activePhotoSectionGrid.appendChild(link);
   });
   photoPanelList.appendChild(fragment);
 }
@@ -390,6 +412,7 @@ async function openPhotoPanelForCluster(cluster) {
   activePhotoHasMore = true;
   activePhotoRequestKey += 1;
   activePhotoLastDateKey = '';
+  activePhotoSectionGrid = null;
   activePhotoAssets = [];
   activeLightboxIndex = -1;
   clearOverlay(selectedPhotoMarker);
