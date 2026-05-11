@@ -512,6 +512,20 @@ button:disabled {
   border-radius: 8px;
 }
 
+.rule-item-clickable {
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.rule-item-clickable:hover {
+  background: #f9fafb;
+  border-color: #cbd5e1;
+}
+
+.rule-item-clickable:active {
+  transform: translateY(1px);
+}
+
 .rule-item div {
   word-break: break-word;
 }
@@ -561,33 +575,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.rule-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.rule-icon-button {
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
-  min-height: 30px;
-  margin: 0;
-  padding: 0;
-  border-radius: 999px;
-  background: #f3f4f6;
-  color: #111827;
-  border: 1px solid #e5e7eb;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.rule-icon-button:hover {
-  background: #e5e7eb;
-}
 
 .popup-actions {
   display: flex;

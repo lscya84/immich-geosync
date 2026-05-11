@@ -815,7 +815,7 @@ function renderRuleList(rules) {
 
   rules.forEach((rule) => {
     const item = document.createElement('li');
-    item.className = 'rule-item';
+    item.className = 'rule-item rule-item-clickable';
     item.innerHTML = `
       <div class="rule-item-top">
         <div class="rule-item-title-wrap">
@@ -824,21 +824,13 @@ function renderRuleList(rules) {
         </div>
         <div class="rule-item-top-right">
           <span class="rule-count">${rule.assetCount != null ? `${rule.assetCount}장` : '…'}</span>
-          <div class="rule-actions">
-            <button type="button" class="rule-icon-button" data-action="edit" aria-label="규칙 수정" title="규칙 수정">✎</button>
-            <button type="button" class="rule-icon-button" data-action="delete" aria-label="규칙 삭제" title="규칙 삭제">✕</button>
-          </div>
         </div>
       </div>
     `;
     list.appendChild(item);
 
-    item.querySelector('[data-action="edit"]').addEventListener('click', () => {
+    item.addEventListener('click', () => {
       startEditingRule(rule.id);
-    });
-
-    item.querySelector('[data-action="delete"]').addEventListener('click', async () => {
-      await deleteRuleById(rule.id);
     });
   });
 }
