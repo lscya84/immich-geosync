@@ -15,6 +15,7 @@ const {
   deleteGroup,
   previewGroup,
   listClusters,
+  getRuleClusterAssets,
   getClusterAssets,
   getAssetPreviewPath,
 } = require('./lib/admin-db');
@@ -211,18 +212,21 @@ app.get('/api/clusters', async (req, res) => {
 });
 
 app.get('/api/clusters/assets', async (req, res) => {
+  const ruleId = String(req.query.ruleId || '').trim();
   const latitude = Number(req.query.latitude);
   const longitude = Number(req.query.longitude);
   const limit = Number(req.query.limit || 12);
   const precision = Number(req.query.precision || 5);
   const offset = Number(req.query.offset || 0);
 
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+  if (!ruleId && (!Number.isFinite(latitude) || !Number.isFinite(longitude))) {
     return res.status(400).json({ error: 'latitude, longitude가 필요합니다.' });
   }
 
   try {
-    const assets = await getClusterAssets(latitude, longitude, limit, precision, offset);
+    const assets = ruleId
+      ? await getRuleClusterAssets(ruleId, limit, offset)
+      : await getClusterAssets(latitude, longitude, limit, precision, offset);
     res.json({
       assets: assets.map((asset) => ({
         ...asset,

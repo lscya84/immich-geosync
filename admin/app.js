@@ -285,7 +285,10 @@ async function loadMoreClusterPhotos() {
   const requestKey = activePhotoRequestKey;
   if (photoPanelStatus) photoPanelStatus.textContent = '사진을 불러오는 중입니다...';
   try {
-    const result = await fetchJson(`/api/clusters/assets?latitude=${encodeURIComponent(activePhotoCluster.latitude)}&longitude=${encodeURIComponent(activePhotoCluster.longitude)}&precision=${encodeURIComponent(activePhotoCluster.precision || 5)}&limit=${photoPageSize}&offset=${activePhotoOffset}`);
+    const clusterParams = activePhotoCluster.ruleId
+      ? `ruleId=${encodeURIComponent(activePhotoCluster.ruleId)}`
+      : `latitude=${encodeURIComponent(activePhotoCluster.latitude)}&longitude=${encodeURIComponent(activePhotoCluster.longitude)}&precision=${encodeURIComponent(activePhotoCluster.precision || 5)}`;
+    const result = await fetchJson(`/api/clusters/assets?${clusterParams}&limit=${photoPageSize}&offset=${activePhotoOffset}`);
     if (requestKey !== activePhotoRequestKey) return 0;
     const assets = result.assets || [];
     activePhotoAssets.push(...assets);
