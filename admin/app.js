@@ -760,28 +760,15 @@ function renderRules(rules) {
 
 function renderClusters(clusters) {
   clusterLayer.clearLayers();
-  const zoom = map.getZoom();
   clusters.forEach((cluster) => {
-    const showPhotoMarker = zoom >= 13 && cluster.assetCount === 1 && cluster.samplePreviewUrl;
-    const badgeSizeClass = cluster.assetCount >= 100 ? 'lg' : cluster.assetCount >= 10 ? 'md' : 'sm';
-    const badgeToneClass = cluster.assetCount >= 100 ? 'dense' : cluster.assetCount >= 10 ? 'mid' : 'light';
-    const marker = showPhotoMarker
-      ? L.marker([cluster.latitude, cluster.longitude], {
-        icon: L.divIcon({
-          className: 'cluster-photo-marker-wrap',
-          html: `<div class="cluster-photo-marker cluster-photo-marker-${zoom >= 15 ? 'lg' : 'sm'}"><img src="${cluster.samplePreviewUrl}" alt="photo" loading="lazy" /></div>`,
-          iconSize: zoom >= 15 ? [52, 52] : [44, 44],
-          iconAnchor: zoom >= 15 ? [26, 26] : [22, 22],
-        }),
-      })
-      : L.marker([cluster.latitude, cluster.longitude], {
-        icon: L.divIcon({
-          className: 'cluster-badge-marker-wrap',
-          html: `<div class="cluster-badge-marker cluster-size-${badgeSizeClass} cluster-tone-${badgeToneClass}"><span>${cluster.assetCount}</span></div>`,
-          iconSize: cluster.assetCount >= 100 ? [52, 52] : cluster.assetCount >= 10 ? [46, 46] : [40, 40],
-          iconAnchor: cluster.assetCount >= 100 ? [26, 26] : cluster.assetCount >= 10 ? [23, 23] : [20, 20],
-        }),
-      });
+    const marker = L.circleMarker([cluster.latitude, cluster.longitude], {
+      radius: Math.max(4, Math.min(9, 3 + Math.log2(cluster.assetCount + 1))),
+      color: '#16a34a',
+      weight: 2,
+      fillColor: '#22c55e',
+      fillOpacity: 0.55,
+      bubblingMouseEvents: false,
+    });
 
     marker.on('click', () => {
       map.panTo([cluster.latitude, cluster.longitude], { animate: true, duration: 0.25 });
