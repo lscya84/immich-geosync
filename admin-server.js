@@ -197,7 +197,13 @@ app.post('/api/groups/:id/preview', async (req, res) => {
 
 app.get('/api/clusters', async (req, res) => {
   try {
-    res.json({ clusters: await listClusters() });
+    const bounds = {
+      south: Number(req.query.south),
+      north: Number(req.query.north),
+      west: Number(req.query.west),
+      east: Number(req.query.east),
+    };
+    res.json({ clusters: await listClusters(bounds) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

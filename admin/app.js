@@ -5,6 +5,9 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const clusterLayer = L.layerGroup().addTo(map);
+let clusterLoadTimer = null;
+let clusterRequestSeq = 0;
+let latestClusterRenderSeq = 0;
 const ruleLayer = L.layerGroup().addTo(map);
 const draftLayer = L.layerGroup().addTo(map);
 const editLayer = L.layerGroup().addTo(map);
@@ -577,7 +580,17 @@ async function loadRules() {
 }
 
 async function loadClusters() {
-  const data = await fetchJson('/api/clusters');
+  const bounds = map.getBounds();
+  const params = new URLSearchParams({
+    south: bounds.getSouth().toString(),
+    north: bounds.getNorth().toString(),
+    west: bounds.getWest().toString(),
+    east: bounds.getEast().toString(),
+  });
+  const requestSeq = ++clusterRequestSeq;
+  const data = await fetchJson(`/api/clusters?${params.toString()}`);
+  if (requestSeq < latestClusterRenderSeq) return;
+  latestClusterRenderSeq = requestSeq;
   renderClusters(data.clusters);
 }
 
@@ -610,7 +623,9 @@ document.getElementById('finish-shape').addEventListener('click', () => {
     });
 });
 document.getElementById('refresh-rules').addEventListener('click', loadRules);
-document.getElementById('refresh-clusters').addEventListener('click', loadClusters);
+document.getElementById('refresh-clusters').addEventListener('click', () => loadClusters().catch((error) => {
+  console.error(error);
+}));
 mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
 mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
 document.querySelectorAll('[data-panel-toggle]').forEach((button) => {
@@ -682,6 +697,16 @@ saveApplyRuleButton.addEventListener('click', () => submitRuleForm('save-apply')
 resetRuleForm();
 updateEditorModeUi();
 setMobilePanelOpen(false);
+
+map.on('moveend', () => {
+  if (clusterLoadTimer) clearTimeout(clusterLoadTimer);
+  clusterLoadTimer = setTimeout(() => {
+    loadClusters().catch((error) => {
+      console.error(error);
+    });
+  }, 180);
+});
+
 Promise.all([loadRules(), loadClusters()]).catch((error) => {
   console.error(error);
   alert(error.message);
