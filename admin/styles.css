@@ -766,6 +766,15 @@ button:disabled {
     min-height: calc(100vh - 56px);
   }
 
+  .map-stage {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .map-stage.photo-panel-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .sidebar {
     position: fixed;
     top: 56px;
@@ -819,6 +828,26 @@ button:disabled {
 
   #map {
     min-height: calc(100vh - 56px);
+  }
+
+  .photo-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: min(86vw, 360px);
+    height: 100%;
+    max-width: 360px;
+    border-left: 1px solid #e5e7eb;
+    box-shadow: -10px 0 24px rgba(0, 0, 0, 0.16);
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+    z-index: 800;
+    pointer-events: none;
+  }
+
+  .map-stage.photo-panel-open .photo-panel {
+    transform: translateX(0);
+    pointer-events: auto;
   }
 
   body.mobile-panel-open .panel-section[data-section="preview"] {
