@@ -1,5 +1,5 @@
 {
-  "name": "immich-ko-reverse-geocoding",
+  "name": "immich-ko-geo-admin",
   "version": "1.4.2",
   "private": true,
   "scripts": {
