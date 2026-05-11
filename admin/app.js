@@ -49,7 +49,7 @@ let activePhotoRequestKey = 0;
 let activePhotoLastDateKey = '';
 let activePhotoAssets = [];
 let activeLightboxIndex = -1;
-const photoPageSize = 18;
+const photoPageSize = 12;
 
 const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 꼭짓점을 드래그해 이동하고 중간점을 드래그해 꼭짓점을 추가할 수 있습니다.';
 
@@ -317,6 +317,14 @@ function appendPhotoCards(assets) {
     link.innerHTML = `
       <img class="photo-card-image" src="${asset.thumbnailUrl || asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
     `;
+    const image = link.querySelector('.photo-card-image');
+    if (image && asset.previewUrl && asset.thumbnailUrl && asset.thumbnailUrl !== asset.previewUrl) {
+      image.addEventListener('error', () => {
+        if (image.dataset.fallbackApplied === 'true') return;
+        image.dataset.fallbackApplied = 'true';
+        image.src = asset.previewUrl;
+      }, { once: true });
+    }
     fragment.appendChild(link);
   });
   photoPanelList.appendChild(fragment);
@@ -333,7 +341,12 @@ async function loadMoreClusterPhotos() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sources: activePhotoCluster.sourceClusters || [],
+          sources: (activePhotoCluster.sourceClusters || []).map((source) => ({
+            ruleId: source.ruleId || '',
+            latitude: source.latitude,
+            longitude: source.longitude,
+            precision: source.precision,
+          })),
           limit: photoPageSize,
           offset: activePhotoOffset,
         }),
