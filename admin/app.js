@@ -306,7 +306,6 @@ function canEditActivePhotoClusterLocation() {
   if (!activePhotoCluster) return false;
   if (activePhotoCluster.isMergedDisplayCluster) return false;
   if ((activePhotoCluster.mergedClusterCount || 1) > 1) return false;
-  if ((map?.getZoom?.() || 0) < FULL_CLUSTER_DISPLAY_ZOOM) return false;
   return true;
 }
 
