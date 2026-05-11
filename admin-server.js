@@ -30,18 +30,11 @@ const mapStyleDarkTileUrl = (process.env.IMMICH_MAP_STYLE_DARK_TILE_URL || mapSt
 const mapStyleLightAttribution = (process.env.IMMICH_MAP_STYLE_LIGHT_ATTRIBUTION || '© OpenStreetMap contributors').trim();
 const mapStyleDarkAttribution = (process.env.IMMICH_MAP_STYLE_DARK_ATTRIBUTION || mapStyleLightAttribution).trim();
 const mapStyleMaxZoom = Math.max(0, Math.min(22, parseInt(process.env.IMMICH_MAP_STYLE_MAX_ZOOM || '19', 10) || 19));
-const naverStaticMapKeyId = (process.env.NAVER_STATIC_MAP_KEY_ID || process.env.NAVER_CLIENT_ID || '').trim();
-const naverStaticMapKey = (process.env.NAVER_STATIC_MAP_KEY || process.env.NAVER_CLIENT_SECRET || '').trim();
-const naverStaticMapLightType = (process.env.NAVER_STATIC_MAP_LIGHT_MAPTYPE || 'basic').trim() || 'basic';
-const naverStaticMapDarkType = (process.env.NAVER_STATIC_MAP_DARK_MAPTYPE || naverStaticMapLightType).trim() || naverStaticMapLightType;
-const naverStaticMapFormat = (process.env.NAVER_STATIC_MAP_FORMAT || 'png').trim() || 'png';
-const naverStaticMapScale = Math.max(1, Math.min(2, parseInt(process.env.NAVER_STATIC_MAP_SCALE || '1', 10) || 1));
-const naverStaticMapMaxZoom = Math.max(0, Math.min(20, parseInt(process.env.NAVER_STATIC_MAP_MAX_ZOOM || '18', 10) || 18));
 
 app.use(express.json({ limit: '1mb' }));
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
 
-function buildRasterMapStyle({ name, tileUrl, attribution, maxzoom = mapStyleMaxZoom }) {
+function buildRasterMapStyle({ name, tileUrl, attribution }) {
   return {
     version: 8,
     name,
@@ -51,7 +44,7 @@ function buildRasterMapStyle({ name, tileUrl, attribution, maxzoom = mapStyleMax
         tiles: [tileUrl],
         tileSize: 256,
         attribution,
-        maxzoom,
+        maxzoom: mapStyleMaxZoom,
       },
     },
     layers: [
@@ -62,61 +55,6 @@ function buildRasterMapStyle({ name, tileUrl, attribution, maxzoom = mapStyleMax
       },
     ],
   };
-}
-
-function slippyTileToLon(x, z) {
-  return (x / (2 ** z)) * 360 - 180;
-}
-
-function slippyTileToLat(y, z) {
-  const n = Math.PI - (2 * Math.PI * y) / (2 ** z);
-  return (180 / Math.PI) * Math.atan(Math.sinh(n));
-}
-
-function getTileCenter(z, x, y) {
-  const zoom = Number(z);
-  const tileX = Number(x);
-  const tileY = Number(y);
-  return {
-    lon: (slippyTileToLon(tileX, zoom) + slippyTileToLon(tileX + 1, zoom)) / 2,
-    lat: (slippyTileToLat(tileY, zoom) + slippyTileToLat(tileY + 1, zoom)) / 2,
-  };
-}
-
-function getNaverStaticTileUrl(req, variant) {
-  const format = naverStaticMapFormat.replace(/^\./, '');
-  return `/map-tiles/naver/${variant}/{z}/{x}/{y}.${format}`;
-}
-
-async function fetchNaverStaticTile({ z, x, y, maptype }) {
-  if (!naverStaticMapKeyId || !naverStaticMapKey) {
-    throw new Error('NAVER static map API key is not configured');
-  }
-
-  const zoom = Math.max(0, Math.min(naverStaticMapMaxZoom, Number(z) || 0));
-  const { lon, lat } = getTileCenter(zoom, Number(x), Number(y));
-  const url = new URL('https://naveropenapi.apigw.ntruss.com/map-static/v2/raster');
-  url.searchParams.set('w', '256');
-  url.searchParams.set('h', '256');
-  url.searchParams.set('center', `${lon},${lat}`);
-  url.searchParams.set('level', String(zoom));
-  url.searchParams.set('maptype', maptype);
-  url.searchParams.set('format', naverStaticMapFormat);
-  url.searchParams.set('scale', String(naverStaticMapScale));
-
-  const response = await fetch(url, {
-    headers: {
-      'X-NCP-APIGW-API-KEY-ID': naverStaticMapKeyId,
-      'X-NCP-APIGW-API-KEY': naverStaticMapKey,
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`Naver static map tile fetch failed (${response.status}): ${body.slice(0, 200)}`);
-  }
-
-  return response;
 }
 
 function validateRulePayload(body) {
@@ -166,54 +104,6 @@ app.get('/map-styles/dark.json', (req, res) => {
     tileUrl: mapStyleDarkTileUrl,
     attribution: mapStyleDarkAttribution,
   }));
-});
-
-app.get('/map-styles/naver-light.json', (req, res) => {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Cache-Control', 'public, max-age=300');
-  res.json(buildRasterMapStyle({
-    name: 'Immich KO Geo Admin Naver Light',
-    tileUrl: getNaverStaticTileUrl(req, 'light'),
-    attribution: '© NAVER Cloud',
-    maxzoom: naverStaticMapMaxZoom,
-  }));
-});
-
-app.get('/map-styles/naver-dark.json', (req, res) => {
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Cache-Control', 'public, max-age=300');
-  res.json(buildRasterMapStyle({
-    name: 'Immich KO Geo Admin Naver Dark',
-    tileUrl: getNaverStaticTileUrl(req, 'dark'),
-    attribution: '© NAVER Cloud',
-    maxzoom: naverStaticMapMaxZoom,
-  }));
-});
-
-app.get('/map-tiles/naver/:variant/:z/:x/:y.:format', async (req, res) => {
-  const variant = String(req.params.variant || 'light').trim() === 'dark' ? 'dark' : 'light';
-  const z = Number(req.params.z);
-  const x = Number(req.params.x);
-  const y = Number(req.params.y);
-  if (!Number.isFinite(z) || !Number.isFinite(x) || !Number.isFinite(y)) {
-    return res.status(400).json({ error: 'invalid tile coordinates' });
-  }
-
-  try {
-    const response = await fetchNaverStaticTile({
-      z,
-      x,
-      y,
-      maptype: variant === 'dark' ? naverStaticMapDarkType : naverStaticMapLightType,
-    });
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Cache-Control', 'public, max-age=86400');
-    res.type(response.headers.get('content-type') || 'image/png');
-    const arrayBuffer = await response.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
-  } catch (error) {
-    res.status(502).json({ error: error.message });
-  }
 });
 
 app.post('/api/reverse-geocode/centroid', async (req, res) => {
