@@ -8,7 +8,8 @@ let editingPolygon = null;
 let selectedPhotoMarker = null;
 let ruleInfoWindow = null;
 const ruleOverlays = [];
-const clusterOverlays = new Map();
+let clusterCanvasOverlay = null;
+let renderedClusterHits = [];
 
 const ruleForm = document.getElementById('rule-form');
 const saveRuleButton = document.getElementById('save-rule-button');
@@ -220,6 +221,97 @@ function createHtmlMarker(position, className, size, innerHtml) {
   });
 }
 
+function ClusterCanvasOverlay(options = {}) {
+  this._map = options.map || null;
+  this._clusters = [];
+  this._canvas = document.createElement('canvas');
+  this._canvas.style.position = 'absolute';
+  this._canvas.style.left = '0';
+  this._canvas.style.top = '0';
+  this._canvas.style.pointerEvents = 'none';
+  this._canvas.style.userSelect = 'none';
+  this._ctx = this._canvas.getContext('2d');
+  this.setMap(this._map);
+}
+
+ClusterCanvasOverlay.prototype = Object.create(naver.maps.OverlayView.prototype);
+ClusterCanvasOverlay.prototype.constructor = ClusterCanvasOverlay;
+
+ClusterCanvasOverlay.prototype.onAdd = function onAdd() {
+  const overlayLayer = this.getPanes().overlayLayer;
+  overlayLayer.appendChild(this._canvas);
+};
+
+ClusterCanvasOverlay.prototype.onRemove = function onRemove() {
+  renderedClusterHits = [];
+  this._canvas.remove();
+};
+
+ClusterCanvasOverlay.prototype.setClusters = function setClusters(clusters) {
+  this._clusters = Array.isArray(clusters) ? clusters : [];
+  this.draw();
+};
+
+ClusterCanvasOverlay.prototype.draw = function draw() {
+  if (!this.getMap()) return;
+
+  const mapElement = document.getElementById('map');
+  const width = Math.max(1, mapElement?.clientWidth || 1);
+  const height = Math.max(1, mapElement?.clientHeight || 1);
+  const ratio = window.devicePixelRatio || 1;
+
+  if (this._canvas.width !== Math.round(width * ratio) || this._canvas.height !== Math.round(height * ratio)) {
+    this._canvas.width = Math.round(width * ratio);
+    this._canvas.height = Math.round(height * ratio);
+    this._canvas.style.width = `${width}px`;
+    this._canvas.style.height = `${height}px`;
+  }
+
+  const ctx = this._ctx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
+  ctx.scale(ratio, ratio);
+
+  const projection = this.getProjection();
+  const hits = [];
+
+  this._clusters.forEach((cluster) => {
+    const point = projection.fromCoordToOffset(toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)));
+    const size = getClusterMarkerSize(cluster);
+    const radius = Math.max(4, size / 2);
+    const isRule = Boolean(cluster.ruleId || cluster.clusterType === 'single_rule');
+    const isSingle = Number(cluster.assetCount) === 1;
+
+    let fillStyle = 'rgba(34, 197, 94, 0.60)';
+    let strokeStyle = 'rgba(22, 163, 74, 0.92)';
+
+    if (isRule) {
+      fillStyle = isSingle ? 'rgba(147, 51, 234, 0.34)' : 'rgba(147, 51, 234, 0.68)';
+      strokeStyle = isSingle ? 'rgba(126, 34, 206, 0.78)' : 'rgba(126, 34, 206, 0.92)';
+    } else if (isSingle) {
+      fillStyle = 'rgba(34, 197, 94, 0.34)';
+      strokeStyle = 'rgba(22, 163, 74, 0.75)';
+    }
+
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = fillStyle;
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = isSingle ? 1 : 1.5;
+    ctx.fill();
+    ctx.stroke();
+
+    hits.push({
+      cluster,
+      x: point.x,
+      y: point.y,
+      radius: radius + 4,
+    });
+  });
+
+  renderedClusterHits = hits;
+};
+
 function renderSelectedPhotoMarker(asset) {
   clearOverlay(selectedPhotoMarker);
   selectedPhotoMarker = null;
@@ -230,6 +322,22 @@ function renderSelectedPhotoMarker(asset) {
     20,
     '<div class="selected-photo-marker-inner"></div>',
   );
+}
+
+function findClusterAtCoord(coord) {
+  if (!map || !coord || !renderedClusterHits.length) return null;
+  const projection = map.getProjection();
+  if (!projection || typeof projection.fromCoordToOffset !== 'function') return null;
+  const point = projection.fromCoordToOffset(coord);
+
+  for (let i = renderedClusterHits.length - 1; i >= 0; i -= 1) {
+    const hit = renderedClusterHits[i];
+    const dx = point.x - hit.x;
+    const dy = point.y - hit.y;
+    if ((dx * dx) + (dy * dy) <= hit.radius * hit.radius) return hit.cluster;
+  }
+
+  return null;
 }
 
 function selectPhotoCard(assetId) {
@@ -883,62 +991,9 @@ function getClusterMarkerSize(cluster) {
   return Math.max(14, Math.min(28, 8 + Math.round(Math.log2((Number(cluster.assetCount) || 0) + 1) * 3)));
 }
 
-function getClusterMarkerClassName(cluster) {
-  const classes = ['cluster-marker'];
-  if (cluster.ruleId || cluster.clusterType === 'single_rule') classes.push('is-rule');
-  if (cluster.assetCount === 1) classes.push('is-single');
-  return classes.join(' ');
-}
-
-function buildClusterMarkerIcon(cluster) {
-  const size = getClusterMarkerSize(cluster);
-  const className = getClusterMarkerClassName(cluster);
-  return {
-    content: `<div class="${className}" style="width:${size}px;height:${size}px;"><div class="cluster-marker-inner"></div></div>`,
-    size: new naver.maps.Size(size, size),
-    anchor: new naver.maps.Point(size / 2, size / 2),
-  };
-}
-
-function getClusterRenderSignature(cluster) {
-  return [
-    cluster.latitude,
-    cluster.longitude,
-    cluster.assetCount,
-    cluster.clusterType || '',
-    cluster.ruleId || '',
-  ].join('|');
-}
-
-function createClusterMarker(cluster) {
-  const marker = new naver.maps.Marker({
-    map,
-    position: toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)),
-    icon: buildClusterMarkerIcon(cluster),
-  });
-  marker.__cluster = cluster;
-  marker.__signature = getClusterRenderSignature(cluster);
-  naver.maps.Event.addListener(marker, 'click', () => {
-    const activeCluster = marker.__cluster || cluster;
-    const target = toLatLng(createLatLngLiteral(activeCluster.latitude, activeCluster.longitude));
-    map.panTo(target);
-    openPhotoPanelForCluster(activeCluster).catch((error) => {
-      console.error(error);
-      if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
-    });
-  });
-  return marker;
-}
-
-function clearClusterOverlays() {
-  for (const marker of clusterOverlays.values()) {
-    clearOverlay(marker);
-  }
-  clusterOverlays.clear();
-}
-
 function resetClusterRenderState() {
-  clearClusterOverlays();
+  renderedClusterHits = [];
+  clusterCanvasOverlay?.setClusters([]);
   latestClusterRenderSeq = 0;
   clusterRequestSeq = 0;
 }
@@ -949,33 +1004,7 @@ function refreshClustersNow() {
 }
 
 function renderClusters(clusters) {
-  const nextKeys = new Set();
-
-  clusters.forEach((cluster) => {
-    const key = cluster.clusterKey || `${cluster.latitude}_${cluster.longitude}_${cluster.assetCount}_${cluster.ruleId || ''}`;
-    nextKeys.add(key);
-
-    const existingMarker = clusterOverlays.get(key);
-    const nextSignature = getClusterRenderSignature(cluster);
-
-    if (existingMarker) {
-      existingMarker.__cluster = cluster;
-      if (existingMarker.__signature !== nextSignature) {
-        existingMarker.setPosition(toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)));
-        existingMarker.setIcon(buildClusterMarkerIcon(cluster));
-        existingMarker.__signature = nextSignature;
-      }
-      return;
-    }
-
-    clusterOverlays.set(key, createClusterMarker(cluster));
-  });
-
-  for (const [key, marker] of clusterOverlays.entries()) {
-    if (nextKeys.has(key)) continue;
-    clearOverlay(marker);
-    clusterOverlays.delete(key);
-  }
+  clusterCanvasOverlay?.setClusters(clusters);
 }
 
 async function fetchJson(url, options) {
@@ -1013,9 +1042,18 @@ async function loadClusters() {
 }
 
 async function handleMapClick(event) {
-  if (!drawMode || drawMode !== 'polygon') return;
-  draftPoints.push(latLngToLiteral(event.coord));
-  renderDraft();
+  if (drawMode === 'polygon') {
+    draftPoints.push(latLngToLiteral(event.coord));
+    renderDraft();
+    return;
+  }
+
+  const clickedCluster = findClusterAtCoord(event.coord);
+  if (!clickedCluster) return;
+
+  const target = toLatLng(createLatLngLiteral(clickedCluster.latitude, clickedCluster.longitude));
+  map.panTo(target);
+  await openPhotoPanelForCluster(clickedCluster);
 }
 
 async function handleRuleSubmit(submitMode) {
@@ -1089,6 +1127,8 @@ function initializeMap() {
     mapDataControl: false,
     logoControl: true,
   });
+
+  clusterCanvasOverlay = new ClusterCanvasOverlay({ map });
 
   naver.maps.Event.addListener(map, 'click', (event) => {
     handleMapClick(event).catch((error) => console.error(error));
