@@ -28,10 +28,8 @@ let editingPolygon = null;
 let editingHandles = [];
 let editingMidpoints = [];
 let editingRuleSnapshot = null;
-let currentClusters = [];
 
 const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.';
-const CLUSTER_COUNT_MIN_ZOOM = 13;
 
 function isMobileLayout() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -517,27 +515,15 @@ function renderRules(rules) {
 }
 
 function renderClusters(clusters) {
-  currentClusters = clusters;
   clusterLayer.clearLayers();
   clusters.forEach((cluster) => {
-    const useCountMarker = map.getZoom() >= CLUSTER_COUNT_MIN_ZOOM;
-    const size = Math.max(32, Math.min(54, 28 + Math.log2(cluster.assetCount + 1) * 6));
-    const marker = useCountMarker
-      ? L.marker([cluster.latitude, cluster.longitude], {
-        icon: L.divIcon({
-          className: 'cluster-count-icon-wrapper',
-          html: `<div class="cluster-count-icon" style="width:${size}px;height:${size}px;"><span>${cluster.assetCount}</span></div>`,
-          iconSize: [size, size],
-          iconAnchor: [size / 2, size / 2],
-        }),
-      })
-      : L.circleMarker([cluster.latitude, cluster.longitude], {
-        radius: Math.max(4, Math.min(10, 3 + Math.log2(cluster.assetCount + 1))),
-        color: '#16a34a',
-        weight: 2,
-        fillColor: '#22c55e',
-        fillOpacity: 0.55,
-      });
+    const marker = L.circleMarker([cluster.latitude, cluster.longitude], {
+      radius: Math.max(4, Math.min(10, 3 + Math.log2(cluster.assetCount + 1))),
+      color: '#16a34a',
+      weight: 2,
+      fillColor: '#22c55e',
+      fillOpacity: 0.55,
+    });
 
     marker.bindPopup(`
       <div class="cluster-popup" data-cluster-lat="${cluster.latitude}" data-cluster-lon="${cluster.longitude}">
@@ -594,10 +580,6 @@ async function loadClusters() {
   const data = await fetchJson('/api/clusters');
   renderClusters(data.clusters);
 }
-
-map.on('zoomend', () => {
-  if (currentClusters.length > 0) renderClusters(currentClusters);
-});
 
 map.on('click', (event) => {
   if (!drawMode) return;
