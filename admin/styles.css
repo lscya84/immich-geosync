@@ -183,6 +183,11 @@ body {
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
+  transition: opacity 0.18s ease;
+}
+
+.photo-panel-list.is-swapping {
+  opacity: 0.38;
 }
 
 .photo-date-group {
@@ -215,6 +220,11 @@ body {
   text-decoration: none;
   color: inherit;
   cursor: zoom-in;
+}
+
+.photo-card.is-selected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18), 0 8px 18px rgba(0, 0, 0, 0.10);
 }
 
 .photo-card-image {
@@ -272,6 +282,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.photo-lightbox-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .photo-lightbox-dialog button {

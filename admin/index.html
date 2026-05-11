@@ -97,7 +97,11 @@
     <div id="photo-lightbox" class="photo-lightbox" aria-hidden="true">
       <div id="photo-lightbox-backdrop" class="photo-lightbox-backdrop"></div>
       <div class="photo-lightbox-dialog">
-        <button id="photo-lightbox-close" type="button" aria-label="큰 사진 닫기">✕</button>
+        <div class="photo-lightbox-toolbar">
+          <button id="photo-lightbox-prev" type="button" aria-label="이전 사진">←</button>
+          <button id="photo-lightbox-next" type="button" aria-label="다음 사진">→</button>
+          <button id="photo-lightbox-close" type="button" aria-label="큰 사진 닫기">✕</button>
+        </div>
         <img id="photo-lightbox-image" class="photo-lightbox-image" alt="preview" />
         <div class="photo-lightbox-meta">
           <div id="photo-lightbox-title" class="photo-lightbox-title"></div>

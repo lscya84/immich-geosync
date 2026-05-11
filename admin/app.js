@@ -11,6 +11,7 @@ let latestClusterRenderSeq = 0;
 const ruleLayer = L.layerGroup().addTo(map);
 const draftLayer = L.layerGroup().addTo(map);
 const editLayer = L.layerGroup().addTo(map);
+const selectedPhotoLayer = L.layerGroup().addTo(map);
 
 const ruleForm = document.getElementById('rule-form');
 const saveRuleButton = document.getElementById('save-rule-button');
@@ -31,6 +32,8 @@ const photoPanelCloseButton = document.getElementById('photo-panel-close');
 const photoLightbox = document.getElementById('photo-lightbox');
 const photoLightboxBackdrop = document.getElementById('photo-lightbox-backdrop');
 const photoLightboxCloseButton = document.getElementById('photo-lightbox-close');
+const photoLightboxPrevButton = document.getElementById('photo-lightbox-prev');
+const photoLightboxNextButton = document.getElementById('photo-lightbox-next');
 const photoLightboxImage = document.getElementById('photo-lightbox-image');
 const photoLightboxTitle = document.getElementById('photo-lightbox-title');
 const photoLightboxDate = document.getElementById('photo-lightbox-date');
@@ -50,6 +53,8 @@ let activePhotoLoading = false;
 let activePhotoHasMore = false;
 let activePhotoRequestKey = 0;
 let activePhotoLastDateKey = '';
+let activePhotoAssets = [];
+let activeLightboxIndex = -1;
 const photoPageSize = 18;
 
 const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.';
@@ -153,18 +158,59 @@ function setPhotoLightboxOpen(open) {
   photoLightbox?.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
 
-function openPhotoLightbox(asset) {
-  if (!photoLightboxImage) return;
+function renderSelectedPhotoMarker(asset) {
+  selectedPhotoLayer.clearLayers();
+  if (!asset || !Number.isFinite(Number(asset.latitude)) || !Number.isFinite(Number(asset.longitude))) return;
+  L.circleMarker([asset.latitude, asset.longitude], {
+    radius: 10,
+    color: '#2563eb',
+    weight: 3,
+    fillColor: '#93c5fd',
+    fillOpacity: 0.4,
+  }).addTo(selectedPhotoLayer);
+}
+
+function selectPhotoCard(assetId) {
+  photoPanelList?.querySelectorAll('.photo-card').forEach((node) => {
+    node.classList.toggle('is-selected', node.dataset.assetId === assetId);
+  });
+}
+
+function syncLightboxNavButtons() {
+  if (photoLightboxPrevButton) photoLightboxPrevButton.disabled = activeLightboxIndex <= 0;
+  if (photoLightboxNextButton) photoLightboxNextButton.disabled = activeLightboxIndex < 0 || activeLightboxIndex >= activePhotoAssets.length - 1;
+}
+
+function openPhotoLightboxByIndex(index) {
+  const asset = activePhotoAssets[index];
+  if (!asset || !photoLightboxImage) return;
+  activeLightboxIndex = index;
   photoLightboxImage.src = asset.previewUrl;
   photoLightboxImage.alt = asset.originalFileName || asset.assetId;
   if (photoLightboxTitle) photoLightboxTitle.textContent = asset.originalFileName || asset.assetId;
   if (photoLightboxDate) photoLightboxDate.textContent = `${formatAssetDate(asset.fileCreatedAt)} · ${asset.state || ''} ${asset.city || ''}`.trim();
+  selectPhotoCard(asset.assetId);
+  renderSelectedPhotoMarker(asset);
+  syncLightboxNavButtons();
   setPhotoLightboxOpen(true);
+}
+
+function openPhotoLightbox(asset) {
+  const index = activePhotoAssets.findIndex((item) => item.assetId === asset.assetId);
+  openPhotoLightboxByIndex(index >= 0 ? index : 0);
 }
 
 function closePhotoLightbox() {
   if (photoLightboxImage) photoLightboxImage.src = '';
+  activeLightboxIndex = -1;
+  syncLightboxNavButtons();
   setPhotoLightboxOpen(false);
+}
+
+function movePhotoLightbox(direction) {
+  const nextIndex = activeLightboxIndex + direction;
+  if (nextIndex < 0 || nextIndex >= activePhotoAssets.length) return;
+  openPhotoLightboxByIndex(nextIndex);
 }
 
 function resetPhotoPanel() {
@@ -174,6 +220,8 @@ function resetPhotoPanel() {
   activePhotoHasMore = false;
   activePhotoRequestKey += 1;
   activePhotoLastDateKey = '';
+  activePhotoAssets = [];
+  activeLightboxIndex = -1;
   if (photoPanelTitle) photoPanelTitle.textContent = '사진';
   if (photoPanelSubtitle) photoPanelSubtitle.textContent = '';
   if (photoPanelList) photoPanelList.innerHTML = '';
@@ -197,6 +245,7 @@ function appendPhotoCards(assets) {
     const link = document.createElement('a');
     link.className = 'photo-card';
     link.href = asset.previewUrl;
+    link.dataset.assetId = asset.assetId;
     link.addEventListener('click', (event) => {
       event.preventDefault();
       openPhotoLightbox(asset);
@@ -223,6 +272,7 @@ async function loadMoreClusterPhotos() {
     const result = await fetchJson(`/api/clusters/assets?latitude=${encodeURIComponent(activePhotoCluster.latitude)}&longitude=${encodeURIComponent(activePhotoCluster.longitude)}&precision=${encodeURIComponent(activePhotoCluster.precision || 5)}&limit=${photoPageSize}&offset=${activePhotoOffset}`);
     if (requestKey !== activePhotoRequestKey) return;
     const assets = result.assets || [];
+    activePhotoAssets.push(...assets);
     appendPhotoCards(assets);
     activePhotoOffset += assets.length;
     activePhotoHasMore = assets.length === photoPageSize;
@@ -243,12 +293,20 @@ async function openPhotoPanelForCluster(cluster) {
   activePhotoHasMore = true;
   activePhotoRequestKey += 1;
   activePhotoLastDateKey = '';
+  activePhotoAssets = [];
+  activeLightboxIndex = -1;
+  selectedPhotoLayer.clearLayers();
+  photoPanelList?.classList.add('is-swapping');
   if (photoPanelTitle) photoPanelTitle.textContent = `사진 ${cluster.assetCount}장`;
   if (photoPanelSubtitle) photoPanelSubtitle.textContent = `${cluster.state || ''} ${cluster.city || ''}`.trim();
-  if (photoPanelList) photoPanelList.innerHTML = '';
+  if (photoPanelList) {
+    photoPanelList.innerHTML = '';
+    photoPanelList.scrollTop = 0;
+  }
   if (photoPanelStatus) photoPanelStatus.textContent = '사진을 불러오는 중입니다...';
   setPhotoPanelOpen(true);
   await loadMoreClusterPhotos();
+  photoPanelList?.classList.remove('is-swapping');
 }
 
 function getVertexIcon() {
@@ -781,9 +839,13 @@ mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.b
 mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
 photoPanelCloseButton?.addEventListener('click', resetPhotoPanel);
 photoLightboxCloseButton?.addEventListener('click', closePhotoLightbox);
+photoLightboxPrevButton?.addEventListener('click', () => movePhotoLightbox(-1));
+photoLightboxNextButton?.addEventListener('click', () => movePhotoLightbox(1));
 photoLightboxBackdrop?.addEventListener('click', closePhotoLightbox);
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closePhotoLightbox();
+  if (event.key === 'ArrowLeft' && photoLightbox?.classList.contains('is-open')) movePhotoLightbox(-1);
+  if (event.key === 'ArrowRight' && photoLightbox?.classList.contains('is-open')) movePhotoLightbox(1);
 });
 photoPanelList?.addEventListener('scroll', () => {
   if (!photoPanelList || activePhotoLoading || !activePhotoHasMore) return;
