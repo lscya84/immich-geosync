@@ -639,11 +639,16 @@ async function saveEditing() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  const applyResult = await fetchJson(`/api/rules/${editingRuleId}/apply`, { method: 'POST' });
 
   cancelEditing();
   resetPhotoPanel();
   await Promise.all([loadRules(), loadClusters()]);
-  setPreviewOutput(JSON.stringify({ message: 'polygon 수정 저장 완료', rule: result.rule }, null, 2));
+  setPreviewOutput(JSON.stringify({
+    message: 'polygon 수정 저장 및 rule 자동 적용 완료',
+    rule: result.rule,
+    apply: applyResult,
+  }, null, 2));
   if (isMobileLayout()) setMobilePanelOpen(false);
   return result.rule;
 }
