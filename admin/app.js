@@ -641,7 +641,8 @@ async function saveEditing() {
   });
 
   cancelEditing();
-  await loadRules();
+  resetPhotoPanel();
+  await Promise.all([loadRules(), loadClusters()]);
   setPreviewOutput(JSON.stringify({ message: 'polygon 수정 저장 완료', rule: result.rule }, null, 2));
   if (isMobileLayout()) setMobilePanelOpen(false);
   return result.rule;
