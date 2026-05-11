@@ -43,6 +43,7 @@ let activePhotoOffset = 0;
 let activePhotoLoading = false;
 let activePhotoHasMore = false;
 let activePhotoRequestKey = 0;
+let activePhotoLastDateKey = '';
 const photoPageSize = 18;
 
 const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.';
@@ -101,6 +102,16 @@ function setPreviewOutput(value) {
   document.getElementById('preview-output').textContent = value;
 }
 
+function getAssetDateKey(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function formatAssetDate(value) {
   if (!value) return '';
   const date = new Date(value);
@@ -111,6 +122,18 @@ function formatAssetDate(value) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+  }).format(date);
+}
+
+function formatAssetDateGroupLabel(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'short',
   }).format(date);
 }
 
@@ -125,6 +148,7 @@ function resetPhotoPanel() {
   activePhotoLoading = false;
   activePhotoHasMore = false;
   activePhotoRequestKey += 1;
+  activePhotoLastDateKey = '';
   if (photoPanelTitle) photoPanelTitle.textContent = '사진';
   if (photoPanelSubtitle) photoPanelSubtitle.textContent = '';
   if (photoPanelList) photoPanelList.innerHTML = '';
@@ -136,6 +160,15 @@ function appendPhotoCards(assets) {
   if (!photoPanelList) return;
   const fragment = document.createDocumentFragment();
   assets.forEach((asset) => {
+    const dateKey = getAssetDateKey(asset.fileCreatedAt);
+    if (dateKey && dateKey !== activePhotoLastDateKey) {
+      const heading = document.createElement('div');
+      heading.className = 'photo-date-group';
+      heading.textContent = formatAssetDateGroupLabel(asset.fileCreatedAt);
+      fragment.appendChild(heading);
+      activePhotoLastDateKey = dateKey;
+    }
+
     const link = document.createElement('a');
     link.className = 'photo-card';
     link.href = asset.previewUrl;
@@ -182,6 +215,7 @@ async function openPhotoPanelForCluster(cluster) {
   activePhotoLoading = false;
   activePhotoHasMore = true;
   activePhotoRequestKey += 1;
+  activePhotoLastDateKey = '';
   if (photoPanelTitle) photoPanelTitle.textContent = `사진 ${cluster.assetCount}장`;
   if (photoPanelSubtitle) photoPanelSubtitle.textContent = `${cluster.state || ''} ${cluster.city || ''}`.trim();
   if (photoPanelList) photoPanelList.innerHTML = '';
