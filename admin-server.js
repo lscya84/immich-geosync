@@ -17,6 +17,7 @@ const {
   listClusters,
   getRuleClusterAssets,
   getClusterAssets,
+  getMergedClusterAssets,
   getAssetPreviewPath,
   getAssetThumbnailPath,
 } = require('./lib/admin-db');
@@ -266,6 +267,14 @@ app.get('/api/clusters', async (req, res) => {
   }
 });
 
+function withAssetUrls(assets = []) {
+  return assets.map((asset) => ({
+    ...asset,
+    previewUrl: `/api/assets/${asset.assetId}/preview`,
+    thumbnailUrl: `/api/assets/${asset.assetId}/thumbnail`,
+  }));
+}
+
 app.get('/api/clusters/assets', async (req, res) => {
   const ruleId = String(req.query.ruleId || '').trim();
   const latitude = Number(req.query.latitude);
@@ -282,13 +291,24 @@ app.get('/api/clusters/assets', async (req, res) => {
     const assets = ruleId
       ? await getRuleClusterAssets(ruleId, limit, offset)
       : await getClusterAssets(latitude, longitude, limit, precision, offset);
-    res.json({
-      assets: assets.map((asset) => ({
-        ...asset,
-        previewUrl: `/api/assets/${asset.assetId}/preview`,
-        thumbnailUrl: `/api/assets/${asset.assetId}/thumbnail`,
-      })),
-    });
+    res.json({ assets: withAssetUrls(assets) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/clusters/assets/merge', async (req, res) => {
+  const sources = Array.isArray(req.body?.sources) ? req.body.sources : [];
+  const limit = Number(req.body?.limit || 12);
+  const offset = Number(req.body?.offset || 0);
+
+  if (!sources.length) {
+    return res.status(400).json({ error: 'sources가 필요합니다.' });
+  }
+
+  try {
+    const assets = await getMergedClusterAssets(sources, limit, offset);
+    res.json({ assets: withAssetUrls(assets) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

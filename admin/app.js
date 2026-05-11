@@ -328,10 +328,19 @@ async function loadMoreClusterPhotos() {
   const requestKey = activePhotoRequestKey;
   if (photoPanelStatus) photoPanelStatus.textContent = '사진을 불러오는 중입니다...';
   try {
-    const clusterParams = activePhotoCluster.ruleId
-      ? `ruleId=${encodeURIComponent(activePhotoCluster.ruleId)}`
-      : `latitude=${encodeURIComponent(activePhotoCluster.latitude)}&longitude=${encodeURIComponent(activePhotoCluster.longitude)}&precision=${encodeURIComponent(activePhotoCluster.precision || 5)}`;
-    const result = await fetchJson(`/api/clusters/assets?${clusterParams}&limit=${photoPageSize}&offset=${activePhotoOffset}`);
+    const result = activePhotoCluster.isMergedDisplayCluster
+      ? await fetchJson('/api/clusters/assets/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sources: activePhotoCluster.sourceClusters || [],
+          limit: photoPageSize,
+          offset: activePhotoOffset,
+        }),
+      })
+      : await fetchJson(`/api/clusters/assets?${activePhotoCluster.ruleId
+        ? `ruleId=${encodeURIComponent(activePhotoCluster.ruleId)}`
+        : `latitude=${encodeURIComponent(activePhotoCluster.latitude)}&longitude=${encodeURIComponent(activePhotoCluster.longitude)}&precision=${encodeURIComponent(activePhotoCluster.precision || 5)}`}&limit=${photoPageSize}&offset=${activePhotoOffset}`);
     if (requestKey !== activePhotoRequestKey) return 0;
     const assets = result.assets || [];
     activePhotoAssets.push(...assets);
@@ -839,12 +848,8 @@ function createClusterMarker(cluster) {
   );
   naver.maps.Event.addListener(marker, 'click', () => {
     const target = toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude));
-    if (cluster.isMergedDisplayCluster && map.getZoom() < 16) {
-      map.morph(target, Math.min(18, map.getZoom() + 2));
-      return;
-    }
     map.panTo(target);
-    openPhotoPanelForCluster(cluster.sourceClusters?.[0] || cluster).catch((error) => {
+    openPhotoPanelForCluster(cluster).catch((error) => {
       console.error(error);
       if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
     });
