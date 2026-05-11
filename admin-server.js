@@ -5,6 +5,7 @@ const { getPolygonCentroid } = require('./lib/cluster-rule-address');
 const {
   ensureAdminTables,
   listRules,
+  listRuleAssetCounts,
   createRule,
   updateRule,
   deleteRule,
@@ -158,6 +159,14 @@ app.post('/api/reverse-geocode/centroid', async (req, res) => {
 app.get('/api/rules', async (req, res) => {
   try {
     res.json({ rules: await listRules() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/rules/counts', async (req, res) => {
+  try {
+    res.json({ counts: await listRuleAssetCounts() });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

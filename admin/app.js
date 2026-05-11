@@ -54,6 +54,7 @@ let activePhotoSectionGrid = null;
 let activePhotoAssets = [];
 let activeLightboxIndex = -1;
 const photoPageSize = 12;
+let ruleCountRequestSeq = 0;
 
 function isMobileLayout() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -760,6 +761,7 @@ function bindRuleInfoWindowActions(rule) {
 }
 
 function openRuleInfoWindow(rule, position) {
+  const currentRule = getRuleById(rule.id) || rule;
   if (!ruleInfoWindow) {
     ruleInfoWindow = new naver.maps.InfoWindow({
       borderWidth: 0,
@@ -770,10 +772,10 @@ function openRuleInfoWindow(rule, position) {
   }
 
   const content = `
-    <div class="rule-popup" data-rule-id="${rule.id}">
-      <strong>${rule.name}</strong>
-      <div>사진 ${rule.assetCount || 0}장</div>
-      <div>${rule.state || ''} ${rule.city || ''}</div>
+    <div class="rule-popup" data-rule-id="${currentRule.id}">
+      <strong>${currentRule.name}</strong>
+      <div>사진 ${currentRule.assetCount != null ? currentRule.assetCount : '계산 중'}${currentRule.assetCount != null ? '장' : ''}</div>
+      <div>${currentRule.state || ''} ${currentRule.city || ''}</div>
       <div class="popup-actions">
         <button type="button" data-action="preview">preview</button>
         <button type="button" data-action="apply">apply</button>
@@ -786,23 +788,48 @@ function openRuleInfoWindow(rule, position) {
   ruleInfoWindow.setContent(content);
   ruleInfoWindow.setPosition(position);
   ruleInfoWindow.open(map);
-  window.setTimeout(() => bindRuleInfoWindowActions(rule), 0);
+  window.setTimeout(() => bindRuleInfoWindowActions(currentRule), 0);
 }
 
-function renderRules(rules) {
-  currentRules = [...rules].sort((a, b) => (Number(b.assetCount) || 0) - (Number(a.assetCount) || 0));
-  const list = document.getElementById('rule-list');
-  list.innerHTML = '';
+function sortRules(rules) {
+  return [...rules].sort((a, b) => {
+    const aHasCount = Number.isFinite(a.assetCount);
+    const bHasCount = Number.isFinite(b.assetCount);
+    if (aHasCount && bHasCount) {
+      return (b.assetCount - a.assetCount) || (a.priority - b.priority) || String(a.name).localeCompare(String(b.name), 'ko');
+    }
+    if (aHasCount !== bHasCount) return aHasCount ? -1 : 1;
+    return (a.priority - b.priority) || String(a.name).localeCompare(String(b.name), 'ko');
+  });
+}
+
+function renderRuleOverlays(rules) {
   closeRuleInfoWindow();
   clearOverlayList(ruleOverlays);
 
-  currentRules.forEach((rule) => {
+  rules.forEach((rule) => {
+    if (rule.geometry?.type !== 'Polygon') return;
+    const path = geometryToPath(rule.geometry);
+    const polygon = createRulePolygon(path, rule);
+    ruleOverlays.push(polygon);
+    naver.maps.Event.addListener(polygon, 'click', (event) => {
+      const position = event?.coord || createPolygonBounds(path).getCenter();
+      openRuleInfoWindow(getRuleById(rule.id) || rule, position);
+    });
+  });
+}
+
+function renderRuleList(rules) {
+  const list = document.getElementById('rule-list');
+  list.innerHTML = '';
+
+  rules.forEach((rule) => {
     const item = document.createElement('li');
     item.className = 'rule-item';
     item.innerHTML = `
       <div class="rule-item-top">
         <strong>${rule.name}</strong>
-        <span class="rule-count">${Number(rule.assetCount) || 0}장</span>
+        <span class="rule-count">${rule.assetCount != null ? `${rule.assetCount}장` : '…'}</span>
       </div>
       <div>${rule.state || ''} ${rule.city || ''}</div>
       <div class="rule-meta">priority ${rule.priority} · override ${rule.applyAsOverride ? 'on' : 'off'} · single ${rule.treatAsSingleCluster ? 'on' : 'off'}</div>
@@ -831,17 +858,26 @@ function renderRules(rules) {
     item.querySelector('[data-action="delete"]').addEventListener('click', async () => {
       await deleteRuleById(rule.id);
     });
-
-    if (rule.geometry?.type === 'Polygon') {
-      const path = geometryToPath(rule.geometry);
-      const polygon = createRulePolygon(path, rule);
-      ruleOverlays.push(polygon);
-      naver.maps.Event.addListener(polygon, 'click', (event) => {
-        const position = event?.coord || createPolygonBounds(path).getCenter();
-        openRuleInfoWindow(rule, position);
-      });
-    }
   });
+}
+
+function renderRules(rules, { refreshOverlays = false } = {}) {
+  currentRules = sortRules(rules);
+  renderRuleList(currentRules);
+  if (refreshOverlays) renderRuleOverlays(currentRules);
+}
+
+async function loadRuleCounts() {
+  const requestSeq = ++ruleCountRequestSeq;
+  const data = await fetchJson('/api/rules/counts');
+  if (requestSeq !== ruleCountRequestSeq) return;
+
+  const countMap = new Map(data.counts.map((item) => [item.id, Number(item.assetCount) || 0]));
+  currentRules = currentRules.map((rule) => ({
+    ...rule,
+    assetCount: countMap.has(rule.id) ? countMap.get(rule.id) : null,
+  }));
+  renderRules(currentRules, { refreshOverlays: false });
 }
 
 function getDisplayClusterGridSize(zoom) {
@@ -963,7 +999,10 @@ async function fetchJson(url, options) {
 
 async function loadRules() {
   const data = await fetchJson('/api/rules');
-  renderRules(data.rules);
+  renderRules(data.rules, { refreshOverlays: true });
+  loadRuleCounts().catch((error) => {
+    console.error(error);
+  });
 }
 
 async function loadClusters() {
