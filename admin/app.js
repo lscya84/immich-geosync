@@ -689,7 +689,7 @@ function bindRuleInfoWindowActions(rule) {
   }, { once: true });
 }
 
-function openRuleInfoWindow(rule, anchor) {
+function openRuleInfoWindow(rule, position) {
   if (!ruleInfoWindow) {
     ruleInfoWindow = new naver.maps.InfoWindow({
       borderWidth: 0,
@@ -713,7 +713,8 @@ function openRuleInfoWindow(rule, anchor) {
   `;
 
   ruleInfoWindow.setContent(content);
-  ruleInfoWindow.open(map, anchor);
+  ruleInfoWindow.setPosition(position);
+  ruleInfoWindow.open(map);
   window.setTimeout(() => bindRuleInfoWindowActions(rule), 0);
 }
 
@@ -760,9 +761,13 @@ function renderRules(rules) {
     });
 
     if (rule.geometry?.type === 'Polygon') {
-      const polygon = createRulePolygon(geometryToPath(rule.geometry), rule);
+      const path = geometryToPath(rule.geometry);
+      const polygon = createRulePolygon(path, rule);
       ruleOverlays.push(polygon);
-      naver.maps.Event.addListener(polygon, 'click', () => openRuleInfoWindow(rule, polygon));
+      naver.maps.Event.addListener(polygon, 'click', (event) => {
+        const position = event?.coord || createPolygonBounds(path).getCenter();
+        openRuleInfoWindow(rule, position);
+      });
     }
   });
 }
