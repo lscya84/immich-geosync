@@ -19,6 +19,7 @@ const {
   getRuleClusterAssets,
   getClusterAssets,
   getMergedClusterAssets,
+  updateClusterAddress,
   getAssetPreviewPath,
   getAssetThumbnailPath,
 } = require('./lib/admin-db');
@@ -360,6 +361,27 @@ app.post('/api/clusters/assets/merge', async (req, res) => {
       hasMore: page.hasMore,
     });
     res.json(page);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/clusters/location', async (req, res) => {
+  if (req.body?.isMergedDisplayCluster) {
+    return res.status(400).json({ error: '합쳐진 표시 클러스터는 바로 수정할 수 없습니다.' });
+  }
+
+  try {
+    const result = await updateClusterAddress({
+      ruleId: req.body?.ruleId || '',
+      latitude: req.body?.latitude,
+      longitude: req.body?.longitude,
+      precision: req.body?.precision,
+      state: req.body?.state,
+      city: req.body?.city,
+    });
+    if (!result) return res.status(404).json({ error: '클러스터 대상을 찾을 수 없습니다.' });
+    res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

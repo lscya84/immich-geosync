@@ -54,6 +54,8 @@ let activePhotoLastDateKey = '';
 let activePhotoSectionGrid = null;
 let activePhotoAssets = [];
 let activeLightboxIndex = -1;
+let isEditingPhotoLocation = false;
+let isSavingPhotoLocation = false;
 const photoPageSize = 12;
 let ruleCountRequestSeq = 0;
 const FULL_CLUSTER_DISPLAY_ZOOM = 16;
@@ -296,6 +298,116 @@ async function movePhotoLightbox(direction) {
   openPhotoLightboxByIndex(nextIndex);
 }
 
+function formatClusterLocation(cluster = {}) {
+  return `${cluster.state || ''} ${cluster.city || ''}`.trim();
+}
+
+function parseClusterLocationInput(value) {
+  const normalized = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!normalized) return { state: '', city: '' };
+
+  const parts = normalized.split(' ');
+  if (parts.length === 1) {
+    if (activePhotoCluster?.state) return { state: activePhotoCluster.state, city: parts[0] };
+    return { state: '', city: parts[0] };
+  }
+
+  return {
+    state: parts[0],
+    city: parts.slice(1).join(' '),
+  };
+}
+
+function renderPhotoPanelSubtitle() {
+  if (!photoPanelSubtitle) return;
+  photoPanelSubtitle.innerHTML = '';
+
+  if (!activePhotoCluster) {
+    photoPanelSubtitle.textContent = '';
+    return;
+  }
+
+  if (activePhotoCluster.isMergedDisplayCluster) {
+    photoPanelSubtitle.textContent = formatClusterLocation(activePhotoCluster) || '합쳐진 클러스터';
+    return;
+  }
+
+  if (isEditingPhotoLocation) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'photo-panel-location-input';
+    input.value = formatClusterLocation(activePhotoCluster);
+    input.placeholder = '예: 강원특별자치도 속초시';
+    input.disabled = isSavingPhotoLocation;
+    photoPanelSubtitle.appendChild(input);
+    input.focus();
+    input.select();
+
+    input.addEventListener('keydown', async (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        const nextLocation = parseClusterLocationInput(input.value);
+        isSavingPhotoLocation = true;
+        input.disabled = true;
+        if (photoPanelStatus) photoPanelStatus.textContent = '위치 정보를 저장하는 중입니다...';
+        try {
+          const result = await fetchJson('/api/clusters/location', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ruleId: activePhotoCluster.ruleId || '',
+              latitude: activePhotoCluster.latitude,
+              longitude: activePhotoCluster.longitude,
+              precision: activePhotoCluster.precision || 5,
+              isMergedDisplayCluster: activePhotoCluster.isMergedDisplayCluster === true,
+              state: nextLocation.state,
+              city: nextLocation.city,
+            }),
+          });
+          activePhotoCluster.state = result.state || '';
+          activePhotoCluster.city = result.city || '';
+          isEditingPhotoLocation = false;
+          isSavingPhotoLocation = false;
+          renderPhotoPanelSubtitle();
+          if (photoPanelStatus) photoPanelStatus.textContent = `${result.updatedCount || 0}개 사진의 위치 정보를 반영했습니다.`;
+          refreshClustersNow().catch((error) => console.error(error));
+        } catch (error) {
+          isSavingPhotoLocation = false;
+          input.disabled = false;
+          if (photoPanelStatus) photoPanelStatus.textContent = error.message || '위치 정보를 저장하지 못했습니다.';
+          input.focus();
+          input.select();
+        }
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        isEditingPhotoLocation = false;
+        isSavingPhotoLocation = false;
+        renderPhotoPanelSubtitle();
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      if (isSavingPhotoLocation) return;
+      isEditingPhotoLocation = false;
+      renderPhotoPanelSubtitle();
+    }, { once: true });
+    return;
+  }
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'photo-panel-location-button';
+  button.textContent = formatClusterLocation(activePhotoCluster) || '위치 정보 입력';
+  button.disabled = isSavingPhotoLocation;
+  button.addEventListener('click', () => {
+    isEditingPhotoLocation = true;
+    renderPhotoPanelSubtitle();
+  });
+  photoPanelSubtitle.appendChild(button);
+}
+
 function resetPhotoPanel() {
   activePhotoCluster = null;
   activePhotoOffset = 0;
@@ -306,10 +418,12 @@ function resetPhotoPanel() {
   activePhotoSectionGrid = null;
   activePhotoAssets = [];
   activeLightboxIndex = -1;
+  isEditingPhotoLocation = false;
+  isSavingPhotoLocation = false;
   clearOverlay(selectedPhotoMarker);
   selectedPhotoMarker = null;
   if (photoPanelTitle) photoPanelTitle.textContent = '사진';
-  if (photoPanelSubtitle) photoPanelSubtitle.textContent = '';
+  renderPhotoPanelSubtitle();
   if (photoPanelList) photoPanelList.innerHTML = '';
   if (photoPanelStatus) photoPanelStatus.textContent = '마커를 선택하면 사진이 표시됩니다.';
   setPhotoPanelOpen(false);
@@ -449,8 +563,10 @@ async function openPhotoPanelForCluster(cluster) {
   clearOverlay(selectedPhotoMarker);
   selectedPhotoMarker = null;
   photoPanelList?.classList.add('is-swapping');
+  isEditingPhotoLocation = false;
+  isSavingPhotoLocation = false;
   if (photoPanelTitle) photoPanelTitle.textContent = `사진 ${cluster.assetCount}장`;
-  if (photoPanelSubtitle) photoPanelSubtitle.textContent = `${cluster.state || ''} ${cluster.city || ''}`.trim();
+  renderPhotoPanelSubtitle();
   if (photoPanelList) {
     photoPanelList.innerHTML = '';
     photoPanelList.scrollTop = 0;

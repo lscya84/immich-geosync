@@ -222,6 +222,41 @@ body.is-drawing-polygon #map * {
   gap: 10px;
 }
 
+.photo-panel-location-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  margin: 2px 0 0;
+  background: transparent;
+  border: 0;
+  color: #4b5563;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.photo-panel-location-button:hover {
+  color: #111827;
+  text-decoration: underline;
+}
+
+.photo-panel-location-input {
+  width: 100%;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #111827;
+  background: #fff;
+}
+
+.photo-panel-location-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
 .photo-panel-header button {
   width: 40px;
   min-width: 40px;
