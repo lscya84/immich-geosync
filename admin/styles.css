@@ -6,6 +6,26 @@ html, body {
 
 body {
   background: #f3f4f6;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  height: 56px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+  z-index: 1000;
+}
+
+.app-header-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
 }
 
 .mobile-panel-toggle,
@@ -16,7 +36,8 @@ body {
 .layout {
   display: grid;
   grid-template-columns: 360px 1fr;
-  height: 100vh;
+  height: calc(100vh - 56px);
+  flex: 1;
 }
 
 .sidebar {
@@ -741,13 +762,13 @@ button:disabled {
 @media (max-width: 900px) {
   .layout {
     grid-template-columns: 1fr;
-    height: 100vh;
-    min-height: 100vh;
+    height: calc(100vh - 56px);
+    min-height: calc(100vh - 56px);
   }
 
   .sidebar {
     position: fixed;
-    top: 0;
+    top: 56px;
     left: 0;
     bottom: 0;
     width: min(88vw, 420px);
@@ -793,11 +814,11 @@ button:disabled {
   }
 
   .map-wrap {
-    min-height: 100vh;
+    min-height: calc(100vh - 56px);
   }
 
   #map {
-    min-height: 100vh;
+    min-height: calc(100vh - 56px);
   }
 
   body.mobile-panel-open .panel-section[data-section="preview"] {

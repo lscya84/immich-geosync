@@ -857,6 +857,8 @@ function renderRuleList(rules) {
     list.appendChild(item);
 
     item.addEventListener('click', () => {
+      resetPhotoPanel();
+      if (isMobileLayout()) setMobilePanelOpen(false);
       startEditingRule(rule.id);
     });
   });
