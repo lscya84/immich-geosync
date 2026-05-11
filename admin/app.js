@@ -1,17 +1,14 @@
-const map = L.map('map').setView([36.5, 127.8], 7);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; OpenStreetMap contributors',
-}).addTo(map);
-
-const clusterLayer = L.layerGroup().addTo(map);
+let map = null;
 let clusterLoadTimer = null;
 let clusterRequestSeq = 0;
 let latestClusterRenderSeq = 0;
-const ruleLayer = L.layerGroup().addTo(map);
-const draftLayer = L.layerGroup().addTo(map);
-const editLayer = L.layerGroup().addTo(map);
-const selectedPhotoLayer = L.layerGroup().addTo(map);
+let draftShape = null;
+let draftGuideLine = null;
+let editingPolygon = null;
+let selectedPhotoMarker = null;
+let ruleInfoWindow = null;
+const ruleOverlays = [];
+const clusterOverlays = [];
 
 const ruleForm = document.getElementById('rule-form');
 const saveRuleButton = document.getElementById('save-rule-button');
@@ -41,12 +38,8 @@ const photoLightboxDate = document.getElementById('photo-lightbox-date');
 
 let drawMode = null;
 let draftPoints = [];
-let draftShape = null;
 let currentRules = [];
 let editingRuleId = null;
-let editingPolygon = null;
-let editingHandles = [];
-let editingMidpoints = [];
 let editingRuleSnapshot = null;
 let activePhotoCluster = null;
 let activePhotoOffset = 0;
@@ -58,7 +51,7 @@ let activePhotoAssets = [];
 let activeLightboxIndex = -1;
 const photoPageSize = 18;
 
-const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.';
+const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 꼭짓점을 드래그해 이동하고 중간점을 드래그해 꼭짓점을 추가할 수 있습니다.';
 
 function isMobileLayout() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -77,37 +70,6 @@ function toggleSection(sectionName) {
   section.classList.toggle('is-open', isOpen);
   const button = section.querySelector('.panel-section-toggle');
   if (button) button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-}
-
-function resetDraft() {
-  draftPoints = [];
-  renderDraft();
-}
-
-function setDrawMode(mode) {
-  drawMode = mode;
-  resetDraft();
-  cancelEditing();
-  if (isMobileLayout()) setMobilePanelOpen(false);
-}
-
-function renderDraft() {
-  draftLayer.clearLayers();
-  draftShape = null;
-
-  if (drawMode === 'polygon' && draftPoints.length > 0) {
-    draftShape = L.polygon(draftPoints, { color: 'red' }).addTo(draftLayer);
-  }
-}
-
-function getDraftGeometry() {
-  if (drawMode === 'polygon' && draftPoints.length >= 3) {
-    const coordinates = draftPoints.map((p) => [p.lng, p.lat]);
-    coordinates.push([draftPoints[0].lng, draftPoints[0].lat]);
-    return { type: 'Polygon', coordinates };
-  }
-
-  return null;
 }
 
 function setPreviewOutput(value) {
@@ -160,16 +122,98 @@ function setPhotoLightboxOpen(open) {
   photoLightbox?.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
 
+function toLatLng(point) {
+  return new naver.maps.LatLng(point.lat, point.lng);
+}
+
+function createLatLngLiteral(lat, lng) {
+  return { lat: Number(lat), lng: Number(lng) };
+}
+
+function latLngToLiteral(latLng) {
+  return createLatLngLiteral(latLng.y, latLng.x);
+}
+
+function clearOverlay(overlay) {
+  if (overlay) overlay.setMap(null);
+}
+
+function clearOverlayList(list) {
+  while (list.length) {
+    clearOverlay(list.pop());
+  }
+}
+
+function kvoArrayToArray(pathLike) {
+  const result = [];
+  if (!pathLike) return result;
+  if (typeof pathLike.getLength === 'function' && typeof pathLike.getAt === 'function') {
+    for (let i = 0; i < pathLike.getLength(); i += 1) {
+      result.push(pathLike.getAt(i));
+    }
+    return result;
+  }
+  if (Array.isArray(pathLike)) return pathLike;
+  return result;
+}
+
+function polygonPathToCoordinates(pathLike) {
+  return kvoArrayToArray(pathLike).map((latLng) => [latLng.x, latLng.y]);
+}
+
+function geometryToPath(geometry) {
+  const coordinates = Array.isArray(geometry?.coordinates) ? geometry.coordinates : [];
+  const ring = coordinates.slice();
+  if (ring.length > 1) {
+    const [firstLng, firstLat] = ring[0];
+    const [lastLng, lastLat] = ring[ring.length - 1];
+    if (firstLng === lastLng && firstLat === lastLat) ring.pop();
+  }
+  return ring.map(([lng, lat]) => toLatLng(createLatLngLiteral(lat, lng)));
+}
+
+function createPolygonBounds(path) {
+  const bounds = new naver.maps.LatLngBounds();
+  path.forEach((latLng) => bounds.extend(latLng));
+  return bounds;
+}
+
+function createRulePolygon(path, rule, extraOptions = {}) {
+  return new naver.maps.Polygon({
+    map,
+    paths: path,
+    strokeColor: extraOptions.strokeColor || (rule?.treatAsSingleCluster ? '#7c3aed' : '#2563eb'),
+    strokeWeight: extraOptions.strokeWeight || (rule?.treatAsSingleCluster ? 3 : 2),
+    strokeOpacity: 0.95,
+    fillColor: extraOptions.fillColor || (rule?.treatAsSingleCluster ? '#8b5cf6' : '#3b82f6'),
+    fillOpacity: extraOptions.fillOpacity ?? (rule?.treatAsSingleCluster ? 0.12 : 0.08),
+    clickable: extraOptions.clickable ?? true,
+    zIndex: extraOptions.zIndex || 10,
+  });
+}
+
+function createHtmlMarker(position, className, size, innerHtml) {
+  return new naver.maps.Marker({
+    map,
+    position,
+    icon: {
+      content: `<div class="${className}" style="width:${size}px;height:${size}px;">${innerHtml || ''}</div>`,
+      size: new naver.maps.Size(size, size),
+      anchor: new naver.maps.Point(size / 2, size / 2),
+    },
+  });
+}
+
 function renderSelectedPhotoMarker(asset) {
-  selectedPhotoLayer.clearLayers();
+  clearOverlay(selectedPhotoMarker);
+  selectedPhotoMarker = null;
   if (!asset || !Number.isFinite(Number(asset.latitude)) || !Number.isFinite(Number(asset.longitude))) return;
-  L.circleMarker([asset.latitude, asset.longitude], {
-    radius: 10,
-    color: '#2563eb',
-    weight: 3,
-    fillColor: '#93c5fd',
-    fillOpacity: 0.4,
-  }).addTo(selectedPhotoLayer);
+  selectedPhotoMarker = createHtmlMarker(
+    toLatLng(createLatLngLiteral(asset.latitude, asset.longitude)),
+    'selected-photo-marker',
+    20,
+    '<div class="selected-photo-marker-inner"></div>',
+  );
 }
 
 function selectPhotoCard(assetId) {
@@ -240,6 +284,8 @@ function resetPhotoPanel() {
   activePhotoLastDateKey = '';
   activePhotoAssets = [];
   activeLightboxIndex = -1;
+  clearOverlay(selectedPhotoMarker);
+  selectedPhotoMarker = null;
   if (photoPanelTitle) photoPanelTitle.textContent = '사진';
   if (photoPanelSubtitle) photoPanelSubtitle.textContent = '';
   if (photoPanelList) photoPanelList.innerHTML = '';
@@ -314,7 +360,8 @@ async function openPhotoPanelForCluster(cluster) {
   activePhotoLastDateKey = '';
   activePhotoAssets = [];
   activeLightboxIndex = -1;
-  selectedPhotoLayer.clearLayers();
+  clearOverlay(selectedPhotoMarker);
+  selectedPhotoMarker = null;
   photoPanelList?.classList.add('is-swapping');
   if (photoPanelTitle) photoPanelTitle.textContent = `사진 ${cluster.assetCount}장`;
   if (photoPanelSubtitle) photoPanelSubtitle.textContent = `${cluster.state || ''} ${cluster.city || ''}`.trim();
@@ -327,24 +374,6 @@ async function openPhotoPanelForCluster(cluster) {
   await loadMoreClusterPhotos();
   photoPanelList?.classList.remove('is-swapping');
   syncLightboxNavButtons();
-}
-
-function getVertexIcon() {
-  return L.divIcon({
-    className: '',
-    html: '<div class="vertex-handle"></div>',
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
-}
-
-function getMidpointIcon() {
-  return L.divIcon({
-    className: '',
-    html: '<div class="vertex-handle midpoint-handle"></div>',
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-  });
 }
 
 function setEditingButtons(enabled) {
@@ -363,7 +392,7 @@ function updateEditorModeUi() {
 
   if (editorModeHint) {
     editorModeHint.textContent = isEditing
-      ? '편집 중입니다. 지도 오른쪽 위의 💾 버튼으로 저장하고, ✕ 버튼으로 편집을 취소하세요.'
+      ? '편집 중입니다. 꼭짓점을 드래그해 수정한 뒤 지도 오른쪽 위의 💾 버튼으로 저장하세요.'
       : defaultEditorHint;
   }
 }
@@ -373,10 +402,11 @@ function getRuleById(ruleId) {
 }
 
 function clearEditingArtifacts() {
-  editLayer.clearLayers();
+  if (editingPolygon) {
+    if (typeof editingPolygon.setEditable === 'function') editingPolygon.setEditable(false);
+    editingPolygon.setMap(null);
+  }
   editingPolygon = null;
-  editingHandles = [];
-  editingMidpoints = [];
 }
 
 function resetRuleForm() {
@@ -397,6 +427,60 @@ function fillRuleForm(rule) {
   ruleForm.applyAsOverride.checked = rule.applyAsOverride !== false;
   ruleForm.treatAsSingleCluster.checked = rule.treatAsSingleCluster === true;
   ruleForm.enabled.checked = rule.enabled !== false;
+}
+
+function resetDraft() {
+  draftPoints = [];
+  renderDraft();
+}
+
+function setDrawMode(mode) {
+  drawMode = mode;
+  resetDraft();
+  cancelEditing();
+  if (isMobileLayout()) setMobilePanelOpen(false);
+}
+
+function renderDraft() {
+  clearOverlay(draftGuideLine);
+  clearOverlay(draftShape);
+  draftGuideLine = null;
+  draftShape = null;
+
+  if (drawMode !== 'polygon' || draftPoints.length === 0 || !map) return;
+  const path = draftPoints.map(toLatLng);
+
+  if (path.length < 3) {
+    draftGuideLine = new naver.maps.Polyline({
+      map,
+      path,
+      strokeColor: '#ef4444',
+      strokeOpacity: 0.95,
+      strokeWeight: 3,
+      zIndex: 20,
+    });
+    return;
+  }
+
+  draftShape = new naver.maps.Polygon({
+    map,
+    paths: path,
+    strokeColor: '#ef4444',
+    strokeOpacity: 0.95,
+    strokeWeight: 3,
+    fillColor: '#f87171',
+    fillOpacity: 0.12,
+    zIndex: 20,
+  });
+}
+
+function getDraftGeometry() {
+  if (drawMode === 'polygon' && draftPoints.length >= 3) {
+    const coordinates = draftPoints.map((point) => [point.lng, point.lat]);
+    coordinates.push([draftPoints[0].lng, draftPoints[0].lat]);
+    return { type: 'Polygon', coordinates };
+  }
+  return null;
 }
 
 function getPolygonCentroid(geometry) {
@@ -470,112 +554,12 @@ function cancelEditing(silent = true) {
   if (!silent) setPreviewOutput('편집이 취소되었습니다.');
 }
 
-function polygonGeometryToLatLngs(geometry) {
-  return (geometry.coordinates || []).slice(0, -1).map(([lng, lat]) => L.latLng(lat, lng));
-}
-
-function getEditingLatLngs() {
-  return editingPolygon?.getLatLngs()?.[0] || [];
-}
-
 function getEditingGeometry() {
-  if (!editingPolygon) return null;
-  const latlngs = getEditingLatLngs();
-  if (latlngs.length < 3) return null;
-  const coordinates = latlngs.map((p) => [p.lng, p.lat]);
-  coordinates.push([latlngs[0].lng, latlngs[0].lat]);
+  if (!editingPolygon || typeof editingPolygon.getPath !== 'function') return null;
+  const coordinates = polygonPathToCoordinates(editingPolygon.getPath());
+  if (coordinates.length < 3) return null;
+  coordinates.push([...coordinates[0]]);
   return { type: 'Polygon', coordinates };
-}
-
-function setEditingLatLngs(latlngs) {
-  if (!editingPolygon) return;
-  editingPolygon.setLatLngs(latlngs);
-}
-
-function syncPolygonFromHandles() {
-  if (!editingPolygon) return;
-  const latlngs = editingHandles.map((handle) => handle.getLatLng());
-  setEditingLatLngs(latlngs);
-}
-
-function midpoint(a, b) {
-  return L.latLng((a.lat + b.lat) / 2, (a.lng + b.lng) / 2);
-}
-
-function addVertexAt(index, latlng) {
-  const latlngs = [...getEditingLatLngs()];
-  latlngs.splice(index, 0, latlng);
-  setEditingLatLngs(latlngs);
-  renderEditHandles();
-}
-
-function removeVertexAt(index) {
-  const latlngs = [...getEditingLatLngs()];
-  if (latlngs.length <= 3) {
-    alert('polygon은 최소 3개의 꼭짓점이 필요합니다.');
-    return;
-  }
-  latlngs.splice(index, 1);
-  setEditingLatLngs(latlngs);
-  renderEditHandles();
-}
-
-function renderEditHandles() {
-  if (!editingPolygon) return;
-  editLayer.clearLayers();
-  editLayer.addLayer(editingPolygon);
-  editingHandles = [];
-  editingMidpoints = [];
-
-  const latlngs = [...getEditingLatLngs()];
-
-  latlngs.forEach((latlng, index) => {
-    const marker = L.marker(latlng, {
-      draggable: true,
-      icon: getVertexIcon(),
-      autoPan: true,
-      keyboard: false,
-      bubblingMouseEvents: false,
-    });
-
-    marker.on('drag', () => {
-      latlngs[index] = marker.getLatLng();
-      setEditingLatLngs(latlngs);
-    });
-
-    marker.on('dragend', () => {
-      syncPolygonFromHandles();
-      renderEditHandles();
-      setPreviewOutput(`편집 중: ${editingRuleSnapshot?.name || ''} / 꼭짓점 ${index + 1} 이동됨`);
-    });
-
-    marker.on('dblclick', (event) => {
-      L.DomEvent.stop(event);
-      removeVertexAt(index);
-      setPreviewOutput(`편집 중: ${editingRuleSnapshot?.name || ''} / 꼭짓점 ${index + 1} 삭제됨`);
-    });
-
-    marker.addTo(editLayer);
-    editingHandles.push(marker);
-  });
-
-  for (let i = 0; i < latlngs.length; i += 1) {
-    const nextIndex = (i + 1) % latlngs.length;
-    const mid = midpoint(latlngs[i], latlngs[nextIndex]);
-    const marker = L.marker(mid, {
-      draggable: false,
-      icon: getMidpointIcon(),
-      keyboard: false,
-      bubblingMouseEvents: false,
-    });
-    marker.on('click', (event) => {
-      L.DomEvent.stop(event);
-      addVertexAt(nextIndex, mid);
-      setPreviewOutput(`편집 중: ${editingRuleSnapshot?.name || ''} / 선분에 꼭짓점 추가됨`);
-    });
-    marker.addTo(editLayer);
-    editingMidpoints.push(marker);
-  }
 }
 
 function startEditingRule(ruleId) {
@@ -590,18 +574,19 @@ function startEditingRule(ruleId) {
   editingRuleId = ruleId;
   editingRuleSnapshot = JSON.parse(JSON.stringify(rule));
   fillRuleForm(editingRuleSnapshot);
-  const latlngs = polygonGeometryToLatLngs(rule.geometry);
-  editingPolygon = L.polygon(latlngs, {
-    color: '#ef4444',
-    weight: 3,
+  const path = geometryToPath(rule.geometry);
+  editingPolygon = createRulePolygon(path, rule, {
+    strokeColor: '#ef4444',
+    strokeWeight: 3,
+    fillColor: '#f87171',
     fillOpacity: 0.12,
-    dashArray: '6, 6',
-  }).addTo(editLayer);
-  renderEditHandles();
+    zIndex: 30,
+  });
+  if (typeof editingPolygon.setEditable === 'function') editingPolygon.setEditable(true);
   setEditingButtons(true);
   updateEditorModeUi();
-  map.fitBounds(editingPolygon.getBounds(), { padding: [20, 20] });
-  setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점을 드래그해 이동, 작은 점 탭으로 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.`);
+  map.fitBounds(createPolygonBounds(path), { top: 20, right: 20, bottom: 20, left: 20 });
+  setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점과 중간점을 드래그해 polygon을 수정한 뒤 저장하세요.`);
   if (isMobileLayout()) setMobilePanelOpen(true);
   document.querySelector('.panel-section[data-section="editor"]')?.classList.add('is-open');
 }
@@ -624,7 +609,7 @@ function getRulePayloadFromForm(geometry) {
 }
 
 async function saveEditing() {
-  if (!editingRuleId || !editingRuleSnapshot) return;
+  if (!editingRuleId || !editingRuleSnapshot) return null;
   const geometry = getEditingGeometry();
   if (!geometry) throw new Error('유효한 polygon이 아닙니다.');
 
@@ -679,11 +664,65 @@ async function deleteRuleById(ruleId) {
   return true;
 }
 
+function closeRuleInfoWindow() {
+  if (ruleInfoWindow) ruleInfoWindow.close();
+}
+
+function bindRuleInfoWindowActions(rule) {
+  const root = document.querySelector(`.rule-popup[data-rule-id="${rule.id}"]`);
+  if (!root) return;
+  root.querySelector('[data-action="preview"]')?.addEventListener('click', async () => {
+    closeRuleInfoWindow();
+    await previewRuleById(rule.id);
+  }, { once: true });
+  root.querySelector('[data-action="apply"]')?.addEventListener('click', async () => {
+    closeRuleInfoWindow();
+    await applyRuleById(rule.id);
+  }, { once: true });
+  root.querySelector('[data-action="edit"]')?.addEventListener('click', () => {
+    closeRuleInfoWindow();
+    startEditingRule(rule.id);
+  }, { once: true });
+  root.querySelector('[data-action="delete"]')?.addEventListener('click', async () => {
+    closeRuleInfoWindow();
+    await deleteRuleById(rule.id);
+  }, { once: true });
+}
+
+function openRuleInfoWindow(rule, anchor) {
+  if (!ruleInfoWindow) {
+    ruleInfoWindow = new naver.maps.InfoWindow({
+      borderWidth: 0,
+      backgroundColor: 'transparent',
+      disableAnchor: false,
+      pixelOffset: new naver.maps.Point(0, -8),
+    });
+  }
+
+  const content = `
+    <div class="rule-popup" data-rule-id="${rule.id}">
+      <strong>${rule.name}</strong>
+      <div>${rule.state || ''} ${rule.city || ''}</div>
+      <div class="popup-actions">
+        <button type="button" data-action="preview">preview</button>
+        <button type="button" data-action="apply">apply</button>
+        <button type="button" data-action="edit">edit</button>
+        <button type="button" data-action="delete">delete</button>
+      </div>
+    </div>
+  `;
+
+  ruleInfoWindow.setContent(content);
+  ruleInfoWindow.open(map, anchor);
+  window.setTimeout(() => bindRuleInfoWindowActions(rule), 0);
+}
+
 function renderRules(rules) {
   currentRules = rules;
   const list = document.getElementById('rule-list');
   list.innerHTML = '';
-  ruleLayer.clearLayers();
+  closeRuleInfoWindow();
+  clearOverlayList(ruleOverlays);
 
   rules.forEach((rule) => {
     const item = document.createElement('li');
@@ -712,7 +751,7 @@ function renderRules(rules) {
       await applyRuleById(rule.id);
     });
 
-    item.querySelector('[data-action="edit"]').addEventListener('click', async () => {
+    item.querySelector('[data-action="edit"]').addEventListener('click', () => {
       startEditingRule(rule.id);
     });
 
@@ -720,71 +759,36 @@ function renderRules(rules) {
       await deleteRuleById(rule.id);
     });
 
-    if (rule.geometry?.type === 'Point') {
-      const [lng, lat] = rule.geometry.coordinates;
-      L.circle([lat, lng], { radius: rule.geometry.radiusMeters || 20, color: '#2563eb' })
-        .bindPopup(rule.name)
-        .addTo(ruleLayer);
-    }
-
     if (rule.geometry?.type === 'Polygon') {
-      const latlngs = rule.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-      const polygon = L.polygon(latlngs, {
-        color: rule.treatAsSingleCluster ? '#7c3aed' : '#2563eb',
-        weight: rule.treatAsSingleCluster ? 3 : 2,
-        fillOpacity: rule.treatAsSingleCluster ? 0.12 : 0.08,
-      }).bindPopup(`
-        <div>
-          <strong>${rule.name}</strong>
-          <div>${rule.state || ''} ${rule.city || ''}</div>
-          <div class="popup-actions">
-            <button type="button" data-rule-preview="${rule.id}">preview</button>
-            <button type="button" data-rule-apply="${rule.id}">apply</button>
-            <button type="button" data-rule-edit="${rule.id}">edit</button>
-            <button type="button" data-rule-delete="${rule.id}">delete</button>
-          </div>
-        </div>
-      `);
-
-      polygon.on('popupopen', (event) => {
-        const root = event.popup.getElement();
-        const previewButton = root?.querySelector(`[data-rule-preview="${rule.id}"]`);
-        const applyButton = root?.querySelector(`[data-rule-apply="${rule.id}"]`);
-        const editButton = root?.querySelector(`[data-rule-edit="${rule.id}"]`);
-        const deleteButton = root?.querySelector(`[data-rule-delete="${rule.id}"]`);
-
-        if (previewButton) previewButton.addEventListener('click', () => previewRuleById(rule.id), { once: true });
-        if (applyButton) applyButton.addEventListener('click', () => applyRuleById(rule.id), { once: true });
-        if (editButton) editButton.addEventListener('click', () => startEditingRule(rule.id), { once: true });
-        if (deleteButton) deleteButton.addEventListener('click', () => deleteRuleById(rule.id), { once: true });
-      });
-
-      polygon.addTo(ruleLayer);
+      const polygon = createRulePolygon(geometryToPath(rule.geometry), rule);
+      ruleOverlays.push(polygon);
+      naver.maps.Event.addListener(polygon, 'click', () => openRuleInfoWindow(rule, polygon));
     }
   });
 }
 
+function createClusterMarker(cluster) {
+  const size = Math.max(14, Math.min(28, 8 + Math.round(Math.log2(cluster.assetCount + 1) * 3)));
+  const marker = createHtmlMarker(
+    toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)),
+    'cluster-marker',
+    size,
+    `<div class="cluster-marker-inner"></div>`,
+  );
+  naver.maps.Event.addListener(marker, 'click', () => {
+    map.panTo(toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)));
+    openPhotoPanelForCluster(cluster).catch((error) => {
+      console.error(error);
+      if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
+    });
+  });
+  return marker;
+}
+
 function renderClusters(clusters) {
-  clusterLayer.clearLayers();
+  clearOverlayList(clusterOverlays);
   clusters.forEach((cluster) => {
-    const marker = L.circleMarker([cluster.latitude, cluster.longitude], {
-      radius: Math.max(4, Math.min(9, 3 + Math.log2(cluster.assetCount + 1))),
-      color: '#16a34a',
-      weight: 2,
-      fillColor: '#22c55e',
-      fillOpacity: 0.55,
-      bubblingMouseEvents: false,
-    });
-
-    marker.on('click', () => {
-      map.panTo([cluster.latitude, cluster.longitude], { animate: true, duration: 0.25 });
-      openPhotoPanelForCluster(cluster).catch((error) => {
-        console.error(error);
-        if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
-      });
-    });
-
-    marker.addTo(clusterLayer);
+    clusterOverlays.push(createClusterMarker(cluster));
   });
 }
 
@@ -801,12 +805,15 @@ async function loadRules() {
 }
 
 async function loadClusters() {
+  if (!map) return;
   const bounds = map.getBounds();
+  const sw = bounds.getSW();
+  const ne = bounds.getNE();
   const params = new URLSearchParams({
-    south: bounds.getSouth().toString(),
-    north: bounds.getNorth().toString(),
-    west: bounds.getWest().toString(),
-    east: bounds.getEast().toString(),
+    south: sw.y.toString(),
+    north: ne.y.toString(),
+    west: sw.x.toString(),
+    east: ne.x.toString(),
     zoom: map.getZoom().toString(),
   });
   const requestSeq = ++clusterRequestSeq;
@@ -816,79 +823,11 @@ async function loadClusters() {
   renderClusters(data.clusters);
 }
 
-map.on('click', (event) => {
-  if (!drawMode) return;
-  if (drawMode === 'point') draftPoints = [event.latlng];
-  if (drawMode === 'polygon') draftPoints.push(event.latlng);
+async function handleMapClick(event) {
+  if (!drawMode || drawMode !== 'polygon') return;
+  draftPoints.push(latLngToLiteral(event.coord));
   renderDraft();
-});
-
-document.getElementById('start-polygon').addEventListener('click', () => setDrawMode('polygon'));
-document.getElementById('clear-shape').addEventListener('click', () => resetDraft());
-document.getElementById('finish-shape').addEventListener('click', () => {
-  const geometry = getDraftGeometry();
-  if (!geometry) {
-    alert('완성된 도형이 없습니다.');
-    return;
-  }
-  autofillAddressFromGeometry(geometry)
-    .then(() => {
-      alert('도형이 준비되었고 주소를 자동으로 채웠습니다. 왼쪽 폼에서 저장하세요.');
-      if (isMobileLayout()) setMobilePanelOpen(true);
-      document.querySelector('.panel-section[data-section="editor"]')?.classList.add('is-open');
-    })
-    .catch((error) => {
-      console.error(error);
-      setPreviewOutput(`주소 자동 채우기 실패: ${error.message}`);
-      alert(`도형은 준비되었지만 주소 자동 채우기에 실패했습니다.\n${error.message}`);
-      if (isMobileLayout()) setMobilePanelOpen(true);
-    });
-});
-document.getElementById('refresh-rules').addEventListener('click', loadRules);
-document.getElementById('refresh-clusters').addEventListener('click', () => loadClusters().catch((error) => {
-  console.error(error);
-}));
-mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
-mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
-photoPanelCloseButton?.addEventListener('click', resetPhotoPanel);
-photoLightboxCloseButton?.addEventListener('click', closePhotoLightbox);
-photoLightboxPrevButton?.addEventListener('click', () => {
-  movePhotoLightbox(-1).catch((error) => console.error(error));
-});
-photoLightboxNextButton?.addEventListener('click', () => {
-  movePhotoLightbox(1).catch((error) => console.error(error));
-});
-photoLightboxBackdrop?.addEventListener('click', closePhotoLightbox);
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closePhotoLightbox();
-  if (event.key === 'ArrowLeft' && photoLightbox?.classList.contains('is-open')) {
-    movePhotoLightbox(-1).catch((error) => console.error(error));
-  }
-  if (event.key === 'ArrowRight' && photoLightbox?.classList.contains('is-open')) {
-    movePhotoLightbox(1).catch((error) => console.error(error));
-  }
-});
-photoPanelList?.addEventListener('scroll', () => {
-  if (!photoPanelList || activePhotoLoading || !activePhotoHasMore) return;
-  const remaining = photoPanelList.scrollHeight - photoPanelList.scrollTop - photoPanelList.clientHeight;
-  if (remaining < 240) {
-    loadMoreClusterPhotos().catch((error) => {
-      console.error(error);
-      if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
-    });
-  }
-});
-document.querySelectorAll('[data-panel-toggle]').forEach((button) => {
-  button.addEventListener('click', () => toggleSection(button.dataset.panelToggle));
-});
-saveEditButton.addEventListener('click', () => saveEditing().catch((error) => {
-  console.error(error);
-  alert(error.message);
-}));
-cancelEditButton.addEventListener('click', () => {
-  cancelEditing(false);
-  resetRuleForm();
-});
+}
 
 async function handleRuleSubmit(submitMode) {
   if (editingRuleId) {
@@ -907,7 +846,6 @@ async function handleRuleSubmit(submitMode) {
   }
 
   const payload = getRulePayloadFromForm(geometry);
-
   const created = await fetchJson('/api/rules', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -925,40 +863,150 @@ async function handleRuleSubmit(submitMode) {
   if (isMobileLayout()) setMobilePanelOpen(false);
 }
 
-ruleForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const submitMode = event.submitter?.dataset?.submitMode || 'save';
-  await handleRuleSubmit(submitMode);
-});
-
-async function submitRuleForm(mode) {
-  await handleRuleSubmit(mode);
+async function loadRuntimeConfig() {
+  return fetchJson('/api/runtime-config');
 }
 
-saveRuleButton.addEventListener('click', () => submitRuleForm('save').catch((error) => {
-  console.error(error);
-  alert(error.message);
-}));
-saveApplyRuleButton.addEventListener('click', () => submitRuleForm('save-apply').catch((error) => {
-  console.error(error);
-  alert(error.message);
-}));
+async function loadNaverMapsScript() {
+  if (window.naver?.maps) return;
+  const config = await loadRuntimeConfig();
+  const clientId = String(config.naverMapsClientId || '').trim();
+  if (!clientId) throw new Error('NAVER_MAPS_CLIENT_ID 또는 NAVER_CLIENT_ID가 필요합니다.');
 
-resetRuleForm();
-updateEditorModeUi();
-setMobilePanelOpen(false);
-resetPhotoPanel();
+  await new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-naver-maps-sdk="true"]');
+    if (existing) {
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', () => reject(new Error('네이버 지도 SDK를 불러오지 못했습니다.')), { once: true });
+      return;
+    }
 
-map.on('moveend', () => {
-  if (clusterLoadTimer) clearTimeout(clusterLoadTimer);
-  clusterLoadTimer = setTimeout(() => {
-    loadClusters().catch((error) => {
-      console.error(error);
-    });
-  }, 180);
-});
+    const script = document.createElement('script');
+    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(clientId)}&submodules=drawing`;
+    script.async = true;
+    script.defer = true;
+    script.dataset.naverMapsSdk = 'true';
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('네이버 지도 SDK를 불러오지 못했습니다.')); 
+    document.head.appendChild(script);
+  });
+}
 
-Promise.all([loadRules(), loadClusters()]).catch((error) => {
+function initializeMap() {
+  map = new naver.maps.Map('map', {
+    center: toLatLng(createLatLngLiteral(36.5, 127.8)),
+    zoom: 7,
+    scaleControl: false,
+    mapDataControl: false,
+    logoControl: true,
+  });
+
+  naver.maps.Event.addListener(map, 'click', (event) => {
+    handleMapClick(event).catch((error) => console.error(error));
+  });
+
+  naver.maps.Event.addListener(map, 'idle', () => {
+    if (clusterLoadTimer) clearTimeout(clusterLoadTimer);
+    clusterLoadTimer = setTimeout(() => {
+      loadClusters().catch((error) => console.error(error));
+    }, 180);
+  });
+}
+
+function bindUiEvents() {
+  document.getElementById('start-polygon').addEventListener('click', () => setDrawMode('polygon'));
+  document.getElementById('clear-shape').addEventListener('click', () => resetDraft());
+  document.getElementById('finish-shape').addEventListener('click', () => {
+    const geometry = getDraftGeometry();
+    if (!geometry) {
+      alert('완성된 도형이 없습니다.');
+      return;
+    }
+    autofillAddressFromGeometry(geometry)
+      .then(() => {
+        alert('도형이 준비되었고 주소를 자동으로 채웠습니다. 왼쪽 폼에서 저장하세요.');
+        if (isMobileLayout()) setMobilePanelOpen(true);
+        document.querySelector('.panel-section[data-section="editor"]')?.classList.add('is-open');
+      })
+      .catch((error) => {
+        console.error(error);
+        setPreviewOutput(`주소 자동 채우기 실패: ${error.message}`);
+        alert(`도형은 준비되었지만 주소 자동 채우기에 실패했습니다.\n${error.message}`);
+        if (isMobileLayout()) setMobilePanelOpen(true);
+      });
+  });
+  document.getElementById('refresh-rules').addEventListener('click', loadRules);
+  document.getElementById('refresh-clusters').addEventListener('click', () => loadClusters().catch((error) => {
+    console.error(error);
+  }));
+  mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
+  mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
+  photoPanelCloseButton?.addEventListener('click', resetPhotoPanel);
+  photoLightboxCloseButton?.addEventListener('click', closePhotoLightbox);
+  photoLightboxPrevButton?.addEventListener('click', () => {
+    movePhotoLightbox(-1).catch((error) => console.error(error));
+  });
+  photoLightboxNextButton?.addEventListener('click', () => {
+    movePhotoLightbox(1).catch((error) => console.error(error));
+  });
+  photoLightboxBackdrop?.addEventListener('click', closePhotoLightbox);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closePhotoLightbox();
+    if (event.key === 'ArrowLeft' && photoLightbox?.classList.contains('is-open')) {
+      movePhotoLightbox(-1).catch((error) => console.error(error));
+    }
+    if (event.key === 'ArrowRight' && photoLightbox?.classList.contains('is-open')) {
+      movePhotoLightbox(1).catch((error) => console.error(error));
+    }
+  });
+  photoPanelList?.addEventListener('scroll', () => {
+    if (!photoPanelList || activePhotoLoading || !activePhotoHasMore) return;
+    const remaining = photoPanelList.scrollHeight - photoPanelList.scrollTop - photoPanelList.clientHeight;
+    if (remaining < 240) {
+      loadMoreClusterPhotos().catch((error) => {
+        console.error(error);
+        if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
+      });
+    }
+  });
+  document.querySelectorAll('[data-panel-toggle]').forEach((button) => {
+    button.addEventListener('click', () => toggleSection(button.dataset.panelToggle));
+  });
+  saveEditButton.addEventListener('click', () => saveEditing().catch((error) => {
+    console.error(error);
+    alert(error.message);
+  }));
+  cancelEditButton.addEventListener('click', () => {
+    cancelEditing(false);
+    resetRuleForm();
+  });
+  ruleForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submitMode = event.submitter?.dataset?.submitMode || 'save';
+    await handleRuleSubmit(submitMode);
+  });
+  saveRuleButton.addEventListener('click', () => handleRuleSubmit('save').catch((error) => {
+    console.error(error);
+    alert(error.message);
+  }));
+  saveApplyRuleButton.addEventListener('click', () => handleRuleSubmit('save-apply').catch((error) => {
+    console.error(error);
+    alert(error.message);
+  }));
+}
+
+async function init() {
+  resetRuleForm();
+  updateEditorModeUi();
+  setMobilePanelOpen(false);
+  resetPhotoPanel();
+  bindUiEvents();
+  await loadNaverMapsScript();
+  initializeMap();
+  await Promise.all([loadRules(), loadClusters()]);
+}
+
+init().catch((error) => {
   console.error(error);
   alert(error.message);
 });

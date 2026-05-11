@@ -79,6 +79,12 @@ app.get('/healthz', (req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/api/runtime-config', (req, res) => {
+  res.json({
+    naverMapsClientId: (process.env.NAVER_MAPS_CLIENT_ID || process.env.NAVER_CLIENT_ID || '').trim(),
+  });
+});
+
 app.get('/map-styles/light.json', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Cache-Control', 'public, max-age=300');
