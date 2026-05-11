@@ -655,8 +655,7 @@ function startEditingRule(ruleId) {
   if (typeof editingPolygon.setEditable === 'function') editingPolygon.setEditable(true);
   updateEditorModeUi();
   map.fitBounds(createPolygonBounds(path), { top: 20, right: 20, bottom: 20, left: 20 });
-  setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점과 중간점을 드래그해 polygon을 수정한 뒤 저장하세요.`);
-  setRuleModalOpen(true);
+  setPreviewOutput(`편집 시작: ${rule.name}\n먼저 polygon을 수정한 뒤 완료(✓)를 누르면 규칙 수정 창이 열립니다.`);
 }
 
 function getRulePayloadFromForm(geometry) {
@@ -1118,6 +1117,17 @@ function bindUiEvents() {
   document.getElementById('start-polygon').addEventListener('click', () => setDrawMode('polygon'));
   document.getElementById('clear-shape').addEventListener('click', () => resetDraft());
   document.getElementById('finish-shape').addEventListener('click', () => {
+    if (editingRuleId) {
+      const geometry = getEditingGeometry();
+      if (!geometry) {
+        alert('완성된 도형이 없습니다.');
+        return;
+      }
+      updateEditorModeUi();
+      setRuleModalOpen(true);
+      return;
+    }
+
     const geometry = getDraftGeometry();
     if (!geometry) {
       alert('완성된 도형이 없습니다.');
