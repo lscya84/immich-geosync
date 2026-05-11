@@ -970,6 +970,7 @@ function createClusterMarker(cluster) {
   marker.__cluster = cluster;
   marker.__signature = getClusterRenderSignature(cluster);
   naver.maps.Event.addListener(marker, 'click', () => {
+    if (drawMode === 'polygon') return;
     const activeCluster = marker.__cluster || cluster;
     const target = toLatLng(createLatLngLiteral(activeCluster.latitude, activeCluster.longitude));
     map.panTo(target);
