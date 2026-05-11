@@ -15,10 +15,13 @@ const {
   deleteGroup,
   previewGroup,
   listClusters,
+  getClusterAssets,
+  getAssetPreviewPath,
 } = require('./lib/admin-db');
 
 const app = express();
 const port = parseInt(process.env.ADMIN_PORT || '3030', 10);
+const uploadRoot = (process.env.UPLOAD_LOCATION || '/usr/src/app/upload').trim() || '/usr/src/app/upload';
 
 app.use(express.json({ limit: '1mb' }));
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
@@ -197,6 +200,47 @@ app.get('/api/clusters', async (req, res) => {
     res.json({ clusters: await listClusters() });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/clusters/assets', async (req, res) => {
+  const latitude = Number(req.query.latitude);
+  const longitude = Number(req.query.longitude);
+  const limit = Number(req.query.limit || 12);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return res.status(400).json({ error: 'latitude, longitude가 필요합니다.' });
+  }
+
+  try {
+    const assets = await getClusterAssets(latitude, longitude, limit);
+    res.json({
+      assets: assets.map((asset) => ({
+        ...asset,
+        previewUrl: `/api/assets/${asset.assetId}/preview`,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/assets/:id/preview', async (req, res) => {
+  try {
+    const previewPath = await getAssetPreviewPath(req.params.id);
+    if (!previewPath) return res.status(404).json({ error: 'preview를 찾을 수 없습니다.' });
+    if (!previewPath.startsWith('/usr/src/app/upload/')) {
+      return res.status(400).json({ error: '허용되지 않은 preview 경로입니다.' });
+    }
+
+    const localPath = path.join(uploadRoot, previewPath.replace('/usr/src/app/upload/', ''));
+    return res.sendFile(localPath, (error) => {
+      if (error && !res.headersSent) {
+        res.status(error.statusCode || 500).json({ error: 'preview 전송 실패' });
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
   }
 });
 

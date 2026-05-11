@@ -517,13 +517,52 @@ function renderRules(rules) {
 function renderClusters(clusters) {
   clusterLayer.clearLayers();
   clusters.forEach((cluster) => {
-    L.circleMarker([cluster.latitude, cluster.longitude], {
-      radius: Math.max(4, Math.min(14, Math.log2(cluster.assetCount + 1) * 2)),
-      color: '#16a34a',
-      fillOpacity: 0.5,
-    })
-      .bindPopup(`사진 ${cluster.assetCount}장<br>${cluster.state || ''} ${cluster.city || ''}`)
-      .addTo(clusterLayer);
+    const size = Math.max(32, Math.min(54, 28 + Math.log2(cluster.assetCount + 1) * 6));
+    const marker = L.marker([cluster.latitude, cluster.longitude], {
+      icon: L.divIcon({
+        className: 'cluster-count-icon-wrapper',
+        html: `<div class="cluster-count-icon" style="width:${size}px;height:${size}px;"><span>${cluster.assetCount}</span></div>`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+      }),
+    });
+
+    marker.bindPopup(`
+      <div class="cluster-popup" data-cluster-lat="${cluster.latitude}" data-cluster-lon="${cluster.longitude}">
+        <strong>사진 ${cluster.assetCount}장</strong>
+        <div>${cluster.state || ''} ${cluster.city || ''}</div>
+        <div class="cluster-popup-gallery is-loading">사진을 불러오는 중입니다...</div>
+      </div>
+    `);
+
+    marker.on('popupopen', async (event) => {
+      const root = event.popup.getElement()?.querySelector('.cluster-popup');
+      const gallery = root?.querySelector('.cluster-popup-gallery');
+      if (!root || !gallery) return;
+
+      gallery.textContent = '사진을 불러오는 중입니다...';
+      gallery.classList.add('is-loading');
+
+      try {
+        const result = await fetchJson(`/api/clusters/assets?latitude=${encodeURIComponent(cluster.latitude)}&longitude=${encodeURIComponent(cluster.longitude)}&limit=6`);
+        const assets = result.assets || [];
+        if (!assets.length) {
+          gallery.textContent = '표시할 사진이 없습니다.';
+          return;
+        }
+
+        gallery.classList.remove('is-loading');
+        gallery.innerHTML = assets.map((asset) => `
+          <a class="cluster-thumb-link" href="${asset.previewUrl}" target="_blank" rel="noreferrer" title="${asset.originalFileName || asset.assetId}">
+            <img class="cluster-thumb-image" src="${asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
+          </a>
+        `).join('');
+      } catch (error) {
+        gallery.textContent = error.message || '사진을 불러오지 못했습니다.';
+      }
+    });
+
+    marker.addTo(clusterLayer);
   });
 }
 
