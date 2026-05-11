@@ -223,12 +223,15 @@ body.is-drawing-polygon #map * {
 }
 
 .photo-panel-location-text {
+  display: block;
   margin-top: 2px;
   color: #4b5563;
   font-size: 13px;
   line-height: 1.45;
   text-align: left;
-  word-break: keep-all;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 button.photo-panel-location-text {
@@ -243,13 +246,6 @@ button.photo-panel-location-text {
 button.photo-panel-location-text.is-editable:hover {
   color: #111827;
   text-decoration: underline;
-}
-
-.photo-panel-location-hint {
-  margin-top: 4px;
-  color: #9ca3af;
-  font-size: 11px;
-  line-height: 1.4;
 }
 
 .photo-panel-location-input {

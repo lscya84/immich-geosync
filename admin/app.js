@@ -416,13 +416,6 @@ function renderPhotoPanelSubtitle() {
   }
   text.textContent = formatClusterLocation(activePhotoCluster) || '위치 정보 없음';
   photoPanelSubtitle.appendChild(text);
-
-  if (!canEditLocation) {
-    const hint = document.createElement('div');
-    hint.className = 'photo-panel-location-hint';
-    hint.textContent = '최대 확대 상태의 최소단위 클러스터에서만 수정할 수 있습니다.';
-    photoPanelSubtitle.appendChild(hint);
-  }
 }
 
 function resetPhotoPanel() {
