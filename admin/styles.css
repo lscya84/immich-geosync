@@ -265,14 +265,15 @@ button:disabled {
 }
 
 .cluster-badge-marker {
-  width: 42px;
-  height: 42px;
+  width: 40px;
+  height: 40px;
   border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
   font-weight: 700;
+  font-size: 13px;
   border: 2px solid rgba(255, 255, 255, 0.92);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
   background: linear-gradient(135deg, #16a34a, #22c55e);
@@ -290,6 +291,18 @@ button:disabled {
   font-size: 15px;
 }
 
+.cluster-badge-marker.cluster-tone-light {
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+}
+
+.cluster-badge-marker.cluster-tone-mid {
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+}
+
+.cluster-badge-marker.cluster-tone-dense {
+  background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+}
+
 .cluster-photo-marker {
   width: 44px;
   height: 44px;
@@ -298,6 +311,12 @@ button:disabled {
   border: 2px solid rgba(255, 255, 255, 0.94);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
   background: #e5e7eb;
+}
+
+.cluster-photo-marker.cluster-photo-marker-lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
 }
 
 .cluster-photo-marker img {
