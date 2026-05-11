@@ -881,7 +881,15 @@ async function loadRuleCounts() {
 }
 
 function getClusterMarkerSize(cluster) {
-  return Math.max(14, Math.min(28, 8 + Math.round(Math.log2((Number(cluster.assetCount) || 0) + 1) * 3)));
+  const count = Math.max(1, Number(cluster.assetCount) || 1);
+  if (count <= 1) return 14;
+  if (count <= 3) return 16;
+  if (count <= 10) return 18;
+  if (count <= 30) return 22;
+  if (count <= 100) return 26;
+  if (count <= 300) return 32;
+  if (count <= 1000) return 38;
+  return 44;
 }
 
 function getDisplayClusterGridSize(zoom) {
@@ -954,7 +962,7 @@ function getClusterMarkerClassName(cluster) {
 function buildClusterMarkerIcon(cluster) {
   const size = getClusterMarkerSize(cluster);
   const className = getClusterMarkerClassName(cluster);
-  const countLabel = Number(cluster.assetCount) > 1
+  const countLabel = Number(cluster.assetCount) > 10
     ? `<span class="cluster-marker-count">${cluster.assetCount > 999 ? '999+' : cluster.assetCount}</span>`
     : '';
   return {
