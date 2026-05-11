@@ -1044,6 +1044,12 @@ function bindUiEvents() {
       movePhotoLightbox(1).catch((error) => console.error(error));
     }
   });
+    photoPanel?.addEventListener('wheel', (event) => {
+    event.stopPropagation();
+  }, { passive: true });
+  photoPanel?.addEventListener('touchmove', (event) => {
+    event.stopPropagation();
+  }, { passive: true });
   photoPanelList?.addEventListener('scroll', () => {
     if (!photoPanelList || activePhotoLoading || !activePhotoHasMore) return;
     const remaining = photoPanelList.scrollHeight - photoPanelList.scrollTop - photoPanelList.clientHeight;

@@ -162,6 +162,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  overscroll-behavior: contain;
 }
 
 .photo-panel-header {
@@ -190,6 +191,7 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-content: start;
+  overscroll-behavior: contain;
   transition: opacity 0.18s ease;
 }
 
