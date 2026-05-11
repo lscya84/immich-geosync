@@ -202,6 +202,7 @@ app.get('/api/clusters', async (req, res) => {
       north: Number(req.query.north),
       west: Number(req.query.west),
       east: Number(req.query.east),
+      zoom: Number(req.query.zoom),
     };
     res.json({ clusters: await listClusters(bounds) });
   } catch (error) {
@@ -213,13 +214,14 @@ app.get('/api/clusters/assets', async (req, res) => {
   const latitude = Number(req.query.latitude);
   const longitude = Number(req.query.longitude);
   const limit = Number(req.query.limit || 12);
+  const precision = Number(req.query.precision || 5);
 
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return res.status(400).json({ error: 'latitude, longitude가 필요합니다.' });
   }
 
   try {
-    const assets = await getClusterAssets(latitude, longitude, limit);
+    const assets = await getClusterAssets(latitude, longitude, limit, precision);
     res.json({
       assets: assets.map((asset) => ({
         ...asset,

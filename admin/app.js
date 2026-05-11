@@ -545,7 +545,7 @@ function renderClusters(clusters) {
       gallery.classList.add('is-loading');
 
       try {
-        const result = await fetchJson(`/api/clusters/assets?latitude=${encodeURIComponent(cluster.latitude)}&longitude=${encodeURIComponent(cluster.longitude)}&limit=6`);
+        const result = await fetchJson(`/api/clusters/assets?latitude=${encodeURIComponent(cluster.latitude)}&longitude=${encodeURIComponent(cluster.longitude)}&precision=${encodeURIComponent(cluster.precision || 5)}&limit=6`);
         const assets = result.assets || [];
         if (!assets.length) {
           gallery.textContent = '표시할 사진이 없습니다.';
@@ -586,6 +586,7 @@ async function loadClusters() {
     north: bounds.getNorth().toString(),
     west: bounds.getWest().toString(),
     east: bounds.getEast().toString(),
+    zoom: map.getZoom().toString(),
   });
   const requestSeq = ++clusterRequestSeq;
   const data = await fetchJson(`/api/clusters?${params.toString()}`);
