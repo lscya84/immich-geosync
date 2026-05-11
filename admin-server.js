@@ -34,38 +34,25 @@ const naverStaticMapKeyId = (process.env.NAVER_STATIC_MAP_KEY_ID || process.env.
 const naverStaticMapKey = (process.env.NAVER_STATIC_MAP_KEY || process.env.NAVER_CLIENT_SECRET || '').trim();
 const naverStaticMapLightType = (process.env.NAVER_STATIC_MAP_LIGHT_MAPTYPE || 'basic').trim() || 'basic';
 const naverStaticMapDarkType = (process.env.NAVER_STATIC_MAP_DARK_MAPTYPE || naverStaticMapLightType).trim() || naverStaticMapLightType;
-const naverStaticMapFormat = (process.env.NAVER_STATIC_MAP_FORMAT || 'jpg').trim() || 'jpg';
-const naverStaticMapScale = Math.max(1, Math.min(2, parseInt(process.env.NAVER_STATIC_MAP_SCALE || '2', 10) || 2));
-const naverStaticMapMinZoom = Math.max(0, Math.min(20, parseInt(process.env.NAVER_STATIC_MAP_MIN_ZOOM || '5', 10) || 5));
-const naverStaticMapMaxZoom = Math.max(naverStaticMapMinZoom, Math.min(20, parseInt(process.env.NAVER_STATIC_MAP_MAX_ZOOM || '18', 10) || 18));
-const naverMapCenterLon = Number(process.env.NAVER_STATIC_MAP_CENTER_LON || '127.8');
-const naverMapCenterLat = Number(process.env.NAVER_STATIC_MAP_CENTER_LAT || '36.4');
-const naverMapStyleBounds = [
-  Number(process.env.NAVER_STATIC_MAP_BOUNDS_WEST || '124.0'),
-  Number(process.env.NAVER_STATIC_MAP_BOUNDS_SOUTH || '33.0'),
-  Number(process.env.NAVER_STATIC_MAP_BOUNDS_EAST || '132.0'),
-  Number(process.env.NAVER_STATIC_MAP_BOUNDS_NORTH || '39.5'),
-];
+const naverStaticMapFormat = (process.env.NAVER_STATIC_MAP_FORMAT || 'png').trim() || 'png';
+const naverStaticMapScale = Math.max(1, Math.min(2, parseInt(process.env.NAVER_STATIC_MAP_SCALE || '1', 10) || 1));
+const naverStaticMapMaxZoom = Math.max(0, Math.min(20, parseInt(process.env.NAVER_STATIC_MAP_MAX_ZOOM || '18', 10) || 18));
 
 app.set('trust proxy', true);
 app.use(express.json({ limit: '1mb' }));
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
 
-function buildRasterMapStyle({ name, tileUrl, attribution, minzoom = naverStaticMapMinZoom, maxzoom = mapStyleMaxZoom, bounds = null, center = null, zoom = null }) {
+function buildRasterMapStyle({ name, tileUrl, attribution, maxzoom = mapStyleMaxZoom }) {
   return {
     version: 8,
     name,
-    ...(Array.isArray(center) ? { center } : {}),
-    ...(Number.isFinite(zoom) ? { zoom } : {}),
     sources: {
       basemap: {
         type: 'raster',
         tiles: [tileUrl],
         tileSize: 256,
         attribution,
-        minzoom,
         maxzoom,
-        ...(Array.isArray(bounds) ? { bounds } : {}),
       },
     },
     layers: [
@@ -73,8 +60,6 @@ function buildRasterMapStyle({ name, tileUrl, attribution, minzoom = naverStatic
         id: 'basemap',
         type: 'raster',
         source: 'basemap',
-        minzoom,
-        maxzoom,
       },
     ],
   };
@@ -109,7 +94,7 @@ async function fetchNaverStaticTile({ z, x, y, maptype }) {
     throw new Error('NAVER static map API key is not configured');
   }
 
-  const zoom = Math.max(naverStaticMapMinZoom, Math.min(naverStaticMapMaxZoom, Number(z) || 0));
+  const zoom = Math.max(0, Math.min(naverStaticMapMaxZoom, Number(z) || 0));
   const { lon, lat } = getTileCenter(zoom, Number(x), Number(y));
   const url = new URL('https://maps.apigw.ntruss.com/map-static/v2/raster');
   url.searchParams.set('w', '256');
@@ -191,11 +176,7 @@ app.get('/map-styles/naver-light.json', (req, res) => {
     name: 'Immich KO Geo Admin Naver Light',
     tileUrl: getNaverStaticTileUrl(req, 'light'),
     attribution: '© NAVER Cloud',
-    minzoom: naverStaticMapMinZoom,
     maxzoom: naverStaticMapMaxZoom,
-    bounds: naverMapStyleBounds,
-    center: [naverMapCenterLon, naverMapCenterLat],
-    zoom: Math.max(naverStaticMapMinZoom, 6),
   }));
 });
 
@@ -206,11 +187,7 @@ app.get('/map-styles/naver-dark.json', (req, res) => {
     name: 'Immich KO Geo Admin Naver Dark',
     tileUrl: getNaverStaticTileUrl(req, 'dark'),
     attribution: '© NAVER Cloud',
-    minzoom: naverStaticMapMinZoom,
     maxzoom: naverStaticMapMaxZoom,
-    bounds: naverMapStyleBounds,
-    center: [naverMapCenterLon, naverMapCenterLat],
-    zoom: Math.max(naverStaticMapMinZoom, 6),
   }));
 });
 
