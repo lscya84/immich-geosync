@@ -24,9 +24,37 @@ const {
 const app = express();
 const port = parseInt(process.env.ADMIN_PORT || '3030', 10);
 const uploadRoot = (process.env.UPLOAD_LOCATION || '/usr/src/app/upload').trim() || '/usr/src/app/upload';
+const mapStyleLightTileUrl = (process.env.IMMICH_MAP_STYLE_LIGHT_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png').trim();
+const mapStyleDarkTileUrl = (process.env.IMMICH_MAP_STYLE_DARK_TILE_URL || mapStyleLightTileUrl).trim();
+const mapStyleLightAttribution = (process.env.IMMICH_MAP_STYLE_LIGHT_ATTRIBUTION || '© OpenStreetMap contributors').trim();
+const mapStyleDarkAttribution = (process.env.IMMICH_MAP_STYLE_DARK_ATTRIBUTION || mapStyleLightAttribution).trim();
+const mapStyleMaxZoom = Math.max(0, Math.min(22, parseInt(process.env.IMMICH_MAP_STYLE_MAX_ZOOM || '19', 10) || 19));
 
 app.use(express.json({ limit: '1mb' }));
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
+
+function buildRasterMapStyle({ name, tileUrl, attribution }) {
+  return {
+    version: 8,
+    name,
+    sources: {
+      basemap: {
+        type: 'raster',
+        tiles: [tileUrl],
+        tileSize: 256,
+        attribution,
+        maxzoom: mapStyleMaxZoom,
+      },
+    },
+    layers: [
+      {
+        id: 'basemap',
+        type: 'raster',
+        source: 'basemap',
+      },
+    ],
+  };
+}
 
 function validateRulePayload(body) {
   if (!body || typeof body !== 'object') return '요청 본문이 필요합니다.';
@@ -49,6 +77,22 @@ function validateGroupPayload(body) {
 
 app.get('/healthz', (req, res) => {
   res.json({ ok: true });
+});
+
+app.get('/map-styles/light.json', (req, res) => {
+  res.json(buildRasterMapStyle({
+    name: 'Immich KO Geo Admin Light',
+    tileUrl: mapStyleLightTileUrl,
+    attribution: mapStyleLightAttribution,
+  }));
+});
+
+app.get('/map-styles/dark.json', (req, res) => {
+  res.json(buildRasterMapStyle({
+    name: 'Immich KO Geo Admin Dark',
+    tileUrl: mapStyleDarkTileUrl,
+    attribution: mapStyleDarkAttribution,
+  }));
 });
 
 app.post('/api/reverse-geocode/centroid', async (req, res) => {
