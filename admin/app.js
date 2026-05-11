@@ -178,7 +178,9 @@ function selectPhotoCard(assetId) {
 
 function syncLightboxNavButtons() {
   if (photoLightboxPrevButton) photoLightboxPrevButton.disabled = activeLightboxIndex <= 0;
-  if (photoLightboxNextButton) photoLightboxNextButton.disabled = activeLightboxIndex < 0 || activeLightboxIndex >= activePhotoAssets.length - 1;
+  if (photoLightboxNextButton) {
+    photoLightboxNextButton.disabled = activeLightboxIndex < 0 || (!activePhotoHasMore && activeLightboxIndex >= activePhotoAssets.length - 1);
+  }
 }
 
 function openPhotoLightboxByIndex(index) {
@@ -207,9 +209,23 @@ function closePhotoLightbox() {
   setPhotoLightboxOpen(false);
 }
 
-function movePhotoLightbox(direction) {
-  const nextIndex = activeLightboxIndex + direction;
-  if (nextIndex < 0 || nextIndex >= activePhotoAssets.length) return;
+async function movePhotoLightbox(direction) {
+  let nextIndex = activeLightboxIndex + direction;
+  if (nextIndex < 0) return;
+  if (nextIndex >= activePhotoAssets.length) {
+    if (direction > 0 && activePhotoHasMore) {
+      if (photoLightboxDate) photoLightboxDate.textContent = '다음 사진을 불러오는 중입니다...';
+      const loaded = await loadMoreClusterPhotos();
+      if (!loaded) {
+        openPhotoLightboxByIndex(activeLightboxIndex);
+        return;
+      }
+    } else {
+      return;
+    }
+    nextIndex = activeLightboxIndex + direction;
+    if (nextIndex >= activePhotoAssets.length) return;
+  }
   openPhotoLightboxByIndex(nextIndex);
 }
 
@@ -264,13 +280,13 @@ function appendPhotoCards(assets) {
 }
 
 async function loadMoreClusterPhotos() {
-  if (!activePhotoCluster || activePhotoLoading || !activePhotoHasMore) return;
+  if (!activePhotoCluster || activePhotoLoading || !activePhotoHasMore) return 0;
   activePhotoLoading = true;
   const requestKey = activePhotoRequestKey;
   if (photoPanelStatus) photoPanelStatus.textContent = '사진을 불러오는 중입니다...';
   try {
     const result = await fetchJson(`/api/clusters/assets?latitude=${encodeURIComponent(activePhotoCluster.latitude)}&longitude=${encodeURIComponent(activePhotoCluster.longitude)}&precision=${encodeURIComponent(activePhotoCluster.precision || 5)}&limit=${photoPageSize}&offset=${activePhotoOffset}`);
-    if (requestKey !== activePhotoRequestKey) return;
+    if (requestKey !== activePhotoRequestKey) return 0;
     const assets = result.assets || [];
     activePhotoAssets.push(...assets);
     appendPhotoCards(assets);
@@ -279,8 +295,11 @@ async function loadMoreClusterPhotos() {
     if (photoPanelStatus) {
       photoPanelStatus.textContent = activePhotoHasMore ? '아래로 스크롤하면 더 과거 사진을 불러옵니다.' : '마지막 사진까지 표시했습니다.';
     }
+    syncLightboxNavButtons();
+    return assets.length;
   } catch (error) {
     if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
+    return 0;
   } finally {
     activePhotoLoading = false;
   }
@@ -307,6 +326,7 @@ async function openPhotoPanelForCluster(cluster) {
   setPhotoPanelOpen(true);
   await loadMoreClusterPhotos();
   photoPanelList?.classList.remove('is-swapping');
+  syncLightboxNavButtons();
 }
 
 function getVertexIcon() {
@@ -839,13 +859,21 @@ mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.b
 mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
 photoPanelCloseButton?.addEventListener('click', resetPhotoPanel);
 photoLightboxCloseButton?.addEventListener('click', closePhotoLightbox);
-photoLightboxPrevButton?.addEventListener('click', () => movePhotoLightbox(-1));
-photoLightboxNextButton?.addEventListener('click', () => movePhotoLightbox(1));
+photoLightboxPrevButton?.addEventListener('click', () => {
+  movePhotoLightbox(-1).catch((error) => console.error(error));
+});
+photoLightboxNextButton?.addEventListener('click', () => {
+  movePhotoLightbox(1).catch((error) => console.error(error));
+});
 photoLightboxBackdrop?.addEventListener('click', closePhotoLightbox);
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closePhotoLightbox();
-  if (event.key === 'ArrowLeft' && photoLightbox?.classList.contains('is-open')) movePhotoLightbox(-1);
-  if (event.key === 'ArrowRight' && photoLightbox?.classList.contains('is-open')) movePhotoLightbox(1);
+  if (event.key === 'ArrowLeft' && photoLightbox?.classList.contains('is-open')) {
+    movePhotoLightbox(-1).catch((error) => console.error(error));
+  }
+  if (event.key === 'ArrowRight' && photoLightbox?.classList.contains('is-open')) {
+    movePhotoLightbox(1).catch((error) => console.error(error));
+  }
 });
 photoPanelList?.addEventListener('scroll', () => {
   if (!photoPanelList || activePhotoLoading || !activePhotoHasMore) return;
