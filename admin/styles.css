@@ -104,6 +104,11 @@ body {
   transition: grid-template-columns 0.22s ease;
 }
 
+.map-stage > * {
+  min-width: 0;
+  min-height: 0;
+}
+
 .map-stage.photo-panel-open {
   grid-template-columns: minmax(0, 1fr) 360px;
 }
@@ -162,6 +167,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   overscroll-behavior: contain;
 }
 
@@ -185,6 +191,7 @@ body {
 
 .photo-panel-list {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 12px;
   display: grid;

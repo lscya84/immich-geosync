@@ -111,10 +111,20 @@ function formatAssetDateGroupLabel(value) {
   }).format(date);
 }
 
+function syncMapLayout() {
+  if (!map) return;
+  window.setTimeout(() => {
+    naver.maps.Event.trigger(map, 'resize');
+    const center = map.getCenter();
+    if (center) map.setCenter(center);
+  }, 0);
+}
+
 function setPhotoPanelOpen(open) {
   mapWrap?.classList.toggle('photo-panel-open', open);
   mapStage?.classList.toggle('photo-panel-open', open);
   photoPanel?.setAttribute('aria-hidden', open ? 'false' : 'true');
+  syncMapLayout();
 }
 
 function setPhotoLightboxOpen(open) {
