@@ -884,7 +884,10 @@ function getClusterMarkerSize(cluster) {
 }
 
 function getClusterMarkerClassName(cluster) {
-  return `cluster-marker${cluster.assetCount === 1 ? ' is-single' : ''}`;
+  const classes = ['cluster-marker'];
+  if (cluster.ruleId || cluster.clusterType === 'single_rule') classes.push('is-rule');
+  if (cluster.assetCount === 1) classes.push('is-single');
+  return classes.join(' ');
 }
 
 function buildClusterMarkerIcon(cluster) {
