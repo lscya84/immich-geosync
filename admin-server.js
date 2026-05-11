@@ -80,6 +80,8 @@ app.get('/healthz', (req, res) => {
 });
 
 app.get('/map-styles/light.json', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cache-Control', 'public, max-age=300');
   res.json(buildRasterMapStyle({
     name: 'Immich KO Geo Admin Light',
     tileUrl: mapStyleLightTileUrl,
@@ -88,6 +90,8 @@ app.get('/map-styles/light.json', (req, res) => {
 });
 
 app.get('/map-styles/dark.json', (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Cache-Control', 'public, max-age=300');
   res.json(buildRasterMapStyle({
     name: 'Immich KO Geo Admin Dark',
     tileUrl: mapStyleDarkTileUrl,
