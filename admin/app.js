@@ -906,37 +906,40 @@ function buildDisplayClusters(clusters) {
 }
 
 function getClusterMarkerSize(cluster) {
-  const zoom = map?.getZoom?.() || 7;
   const count = Math.max(1, Number(cluster.assetCount) || 1);
-  let size;
-
-  if (count <= 1) size = 8;
-  else if (count <= 3) size = 10;
-  else if (count <= 10) size = 12;
-  else if (count <= 30) size = 14;
-  else if (count <= 100) size = 16;
-  else if (count <= 300) size = 18;
-  else if (count <= 1000) size = 22;
-  else size = 26;
-
-  if (zoom >= 15) size -= 2;
-  else if (zoom >= 13) size -= 1;
-
-  if (cluster.isMergedDisplayCluster && count > 1) size += 1;
-
-  return Math.max(count <= 1 ? 7 : 9, size);
+  if (count <= 1) return 12;
+  if (count <= 3) return 14;
+  if (count <= 10) return 16;
+  if (count <= 30) return 20;
+  if (count <= 100) return 24;
+  if (count <= 300) return 28;
+  if (count <= 1000) return 34;
+  return 40;
 }
 
 function createClusterMarker(cluster) {
   const size = getClusterMarkerSize(cluster);
-  const showCount = cluster.assetCount > 1 && size >= 14;
-  const countLabel = showCount ? `<span class="cluster-marker-count">${cluster.assetCount > 999 ? '999+' : cluster.assetCount}</span>` : '';
-  const marker = createHtmlMarker(
-    toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)),
-    `cluster-marker${cluster.isMergedDisplayCluster ? ' is-merged' : ''}${cluster.assetCount === 1 ? ' is-single' : ''}`,
-    size,
-    `<div class="cluster-marker-inner"></div>${countLabel}`,
-  );
+  const radius = Math.max(5, Math.round(size / 2));
+  const strokeColor = cluster.isMergedDisplayCluster ? '#1d4ed8' : '#16a34a';
+  const fillColor = cluster.isMergedDisplayCluster ? '#2563eb' : '#22c55e';
+  const fillOpacity = cluster.assetCount <= 1 ? 0.32 : cluster.isMergedDisplayCluster ? 0.74 : 0.62;
+  const marker = new naver.maps.Marker({
+    map,
+    position: toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)),
+    title: cluster.assetCount > 999 ? '999+' : String(cluster.assetCount),
+    icon: {
+      path: naver.maps.SymbolPath.CIRCLE,
+      style: naver.maps.SymbolStyle.CIRCLE,
+      radius,
+      fillColor,
+      fillOpacity,
+      strokeColor,
+      strokeWeight: cluster.assetCount <= 1 ? 1 : 2,
+      strokeOpacity: 0.95,
+      anchor: new naver.maps.Point(0, 0),
+    },
+    cursor: 'pointer',
+  });
   naver.maps.Event.addListener(marker, 'click', () => {
     const target = toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude));
     map.panTo(target);
