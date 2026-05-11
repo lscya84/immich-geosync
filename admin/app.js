@@ -13,10 +13,12 @@ const clusterOverlays = [];
 const ruleForm = document.getElementById('rule-form');
 const saveRuleButton = document.getElementById('save-rule-button');
 const saveApplyRuleButton = document.getElementById('save-apply-rule-button');
-const saveEditButton = document.getElementById('save-edit');
-const cancelEditButton = document.getElementById('cancel-edit');
-const editorSectionTitle = document.getElementById('editor-section-title');
-const editorModeHint = document.getElementById('editor-mode-hint');
+const ruleModal = document.getElementById('rule-modal');
+const ruleModalBackdrop = document.getElementById('rule-modal-backdrop');
+const ruleModalCloseButton = document.getElementById('rule-modal-close');
+const ruleModalCancelButton = document.getElementById('rule-modal-cancel');
+const ruleModalTitle = document.getElementById('rule-modal-title');
+const ruleModalHint = document.getElementById('rule-modal-hint');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
 const mapWrap = document.querySelector('.map-wrap');
@@ -35,6 +37,7 @@ const photoLightboxNextButton = document.getElementById('photo-lightbox-next');
 const photoLightboxImage = document.getElementById('photo-lightbox-image');
 const photoLightboxTitle = document.getElementById('photo-lightbox-title');
 const photoLightboxDate = document.getElementById('photo-lightbox-date');
+const previewOutput = document.getElementById('preview-output');
 
 let drawMode = null;
 let draftPoints = [];
@@ -52,8 +55,6 @@ let activePhotoAssets = [];
 let activeLightboxIndex = -1;
 const photoPageSize = 12;
 
-const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 꼭짓점을 드래그해 이동하고 중간점을 드래그해 꼭짓점을 추가할 수 있습니다.';
-
 function isMobileLayout() {
   return window.matchMedia('(max-width: 900px)').matches;
 }
@@ -64,17 +65,20 @@ function setMobilePanelOpen(open) {
   mobilePanelToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
 }
 
-function toggleSection(sectionName) {
-  const section = document.querySelector(`.panel-section[data-section="${sectionName}"]`);
-  if (!section) return;
-  const isOpen = !section.classList.contains('is-open');
-  section.classList.toggle('is-open', isOpen);
-  const button = section.querySelector('.panel-section-toggle');
-  if (button) button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+function setPreviewOutput(value) {
+  if (previewOutput) previewOutput.textContent = value;
 }
 
-function setPreviewOutput(value) {
-  document.getElementById('preview-output').textContent = value;
+function setRuleModalOpen(open) {
+  ruleModal?.classList.toggle('is-open', open);
+  ruleModal?.setAttribute('aria-hidden', open ? 'false' : 'true');
+}
+
+function closeRuleModal({ resetForm = true } = {}) {
+  setRuleModalOpen(false);
+  if (editingRuleId) cancelEditing(false);
+  else resetDraft();
+  if (resetForm) resetRuleForm();
 }
 
 function getAssetDateKey(value) {
@@ -452,24 +456,13 @@ async function openPhotoPanelForCluster(cluster) {
   syncLightboxNavButtons();
 }
 
-function setEditingButtons(enabled) {
-  saveEditButton.disabled = !enabled;
-  cancelEditButton.disabled = !enabled;
-}
-
 function updateEditorModeUi() {
   const isEditing = Boolean(editingRuleId);
-  saveRuleButton.disabled = isEditing;
-  saveApplyRuleButton.disabled = isEditing;
-
-  if (editorSectionTitle) {
-    editorSectionTitle.textContent = isEditing ? '규칙 편집 중' : '규칙 추가';
-  }
-
-  if (editorModeHint) {
-    editorModeHint.textContent = isEditing
-      ? '편집 중입니다. 꼭짓점을 드래그해 수정한 뒤 지도 오른쪽 위의 💾 버튼으로 저장하세요.'
-      : defaultEditorHint;
+  if (ruleModalTitle) ruleModalTitle.textContent = isEditing ? '규칙 수정' : '규칙 추가';
+  if (ruleModalHint) {
+    ruleModalHint.textContent = isEditing
+      ? '지도에서 폴리곤을 수정한 뒤 이 모달에서 저장하세요.'
+      : '폴리곤 완료 후 규칙 정보를 저장하세요.';
   }
 }
 
@@ -514,6 +507,7 @@ function setDrawMode(mode) {
   drawMode = mode;
   resetDraft();
   cancelEditing();
+  setRuleModalOpen(false);
   if (isMobileLayout()) setMobilePanelOpen(false);
 }
 
@@ -625,7 +619,6 @@ function cancelEditing(silent = true) {
   editingRuleId = null;
   editingRuleSnapshot = null;
   clearEditingArtifacts();
-  setEditingButtons(false);
   updateEditorModeUi();
   if (!silent) setPreviewOutput('편집이 취소되었습니다.');
 }
@@ -659,12 +652,10 @@ function startEditingRule(ruleId) {
     zIndex: 30,
   });
   if (typeof editingPolygon.setEditable === 'function') editingPolygon.setEditable(true);
-  setEditingButtons(true);
   updateEditorModeUi();
   map.fitBounds(createPolygonBounds(path), { top: 20, right: 20, bottom: 20, left: 20 });
   setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점과 중간점을 드래그해 polygon을 수정한 뒤 저장하세요.`);
-  if (isMobileLayout()) setMobilePanelOpen(true);
-  document.querySelector('.panel-section[data-section="editor"]')?.classList.add('is-open');
+  setRuleModalOpen(true);
 }
 
 function getRulePayloadFromForm(geometry) {
@@ -700,6 +691,7 @@ async function saveEditing() {
   const applyResult = await fetchJson(`/api/rules/${editingRuleId}/apply`, { method: 'POST' });
 
   cancelEditing();
+  setRuleModalOpen(false);
   resetPhotoPanel();
   await Promise.all([loadRules(), loadClusters()]);
   setPreviewOutput(JSON.stringify({
@@ -720,6 +712,7 @@ async function applyRuleById(ruleId) {
 async function previewRuleById(ruleId) {
   const result = await fetchJson(`/api/rules/${ruleId}/preview`, { method: 'POST' });
   setPreviewOutput(JSON.stringify(result, null, 2));
+  alert(`미리보기: ${result.rule?.name || 'rule'}\n매칭 사진 ${result.assetCount || 0}장`);
 }
 
 async function deleteRuleById(ruleId) {
@@ -733,6 +726,7 @@ async function deleteRuleById(ruleId) {
   }
   if (editingRuleId === rule.id) {
     cancelEditing();
+    setRuleModalOpen(false);
     resetRuleForm();
   }
   setPreviewOutput(`삭제 완료: ${rule.name}`);
@@ -778,6 +772,7 @@ function openRuleInfoWindow(rule, position) {
   const content = `
     <div class="rule-popup" data-rule-id="${rule.id}">
       <strong>${rule.name}</strong>
+      <div>사진 ${rule.assetCount || 0}장</div>
       <div>${rule.state || ''} ${rule.city || ''}</div>
       <div class="popup-actions">
         <button type="button" data-action="preview">preview</button>
@@ -795,21 +790,22 @@ function openRuleInfoWindow(rule, position) {
 }
 
 function renderRules(rules) {
-  currentRules = rules;
+  currentRules = [...rules].sort((a, b) => (Number(b.assetCount) || 0) - (Number(a.assetCount) || 0));
   const list = document.getElementById('rule-list');
   list.innerHTML = '';
   closeRuleInfoWindow();
   clearOverlayList(ruleOverlays);
 
-  rules.forEach((rule) => {
+  currentRules.forEach((rule) => {
     const item = document.createElement('li');
     item.className = 'rule-item';
     item.innerHTML = `
-      <strong>${rule.name}</strong>
-      <div>type: ${rule.ruleType}</div>
-      <div>priority: ${rule.priority}</div>
-      <div>override: ${rule.applyAsOverride ? 'on' : 'off'} / single cluster: ${rule.treatAsSingleCluster ? 'on' : 'off'}</div>
+      <div class="rule-item-top">
+        <strong>${rule.name}</strong>
+        <span class="rule-count">${Number(rule.assetCount) || 0}장</span>
+      </div>
       <div>${rule.state || ''} ${rule.city || ''}</div>
+      <div class="rule-meta">priority ${rule.priority} · override ${rule.applyAsOverride ? 'on' : 'off'} · single ${rule.treatAsSingleCluster ? 'on' : 'off'}</div>
       <div class="rule-actions">
         <button type="button" data-action="preview">preview</button>
         <button type="button" data-action="apply">apply</button>
@@ -1024,9 +1020,9 @@ async function handleRuleSubmit(submitMode) {
 
   resetRuleForm();
   resetDraft();
+  setRuleModalOpen(false);
   await loadRules();
   alert('rule이 저장되었습니다.');
-  if (isMobileLayout()) setMobilePanelOpen(false);
 }
 
 async function loadRuntimeConfig() {
@@ -1090,15 +1086,15 @@ function bindUiEvents() {
     }
     autofillAddressFromGeometry(geometry)
       .then(() => {
-        alert('도형이 준비되었고 주소를 자동으로 채웠습니다. 왼쪽 폼에서 저장하세요.');
-        if (isMobileLayout()) setMobilePanelOpen(true);
-        document.querySelector('.panel-section[data-section="editor"]')?.classList.add('is-open');
+        updateEditorModeUi();
+        setRuleModalOpen(true);
       })
       .catch((error) => {
         console.error(error);
         setPreviewOutput(`주소 자동 채우기 실패: ${error.message}`);
         alert(`도형은 준비되었지만 주소 자동 채우기에 실패했습니다.\n${error.message}`);
-        if (isMobileLayout()) setMobilePanelOpen(true);
+        updateEditorModeUi();
+        setRuleModalOpen(true);
       });
   });
   document.getElementById('refresh-rules').addEventListener('click', loadRules);
@@ -1117,7 +1113,13 @@ function bindUiEvents() {
   });
   photoLightboxBackdrop?.addEventListener('click', closePhotoLightbox);
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closePhotoLightbox();
+    if (event.key === 'Escape') {
+      if (ruleModal?.classList.contains('is-open')) {
+        closeRuleModal();
+        return;
+      }
+      closePhotoLightbox();
+    }
     if (event.key === 'ArrowLeft' && photoLightbox?.classList.contains('is-open')) {
       movePhotoLightbox(-1).catch((error) => console.error(error));
     }
@@ -1141,16 +1143,14 @@ function bindUiEvents() {
       });
     }
   });
-  document.querySelectorAll('[data-panel-toggle]').forEach((button) => {
-    button.addEventListener('click', () => toggleSection(button.dataset.panelToggle));
+  ruleModalCloseButton?.addEventListener('click', () => {
+    closeRuleModal();
   });
-  saveEditButton.addEventListener('click', () => saveEditing().catch((error) => {
-    console.error(error);
-    alert(error.message);
-  }));
-  cancelEditButton.addEventListener('click', () => {
-    cancelEditing(false);
-    resetRuleForm();
+  ruleModalCancelButton?.addEventListener('click', () => {
+    closeRuleModal();
+  });
+  ruleModalBackdrop?.addEventListener('click', () => {
+    closeRuleModal();
   });
   ruleForm.addEventListener('submit', async (event) => {
     event.preventDefault();

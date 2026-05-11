@@ -39,6 +39,10 @@ body {
   margin-top: 10px;
 }
 
+.section-header strong {
+  font-size: 15px;
+}
+
 .form-action-bar,
 .floating-action-bar {
   display: flex;
@@ -365,6 +369,70 @@ body {
   color: #6b7280;
 }
 
+.rule-modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 2100;
+}
+
+.rule-modal.is-open {
+  display: flex;
+}
+
+.rule-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.42);
+}
+
+.rule-modal-dialog {
+  position: relative;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+  padding: 16px;
+}
+
+.rule-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.rule-modal-header button {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  margin: 0;
+}
+
+.rule-form-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rule-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.rule-modal-actions button {
+  flex: 1;
+  margin-top: 0;
+}
+
 h1 {
   font-size: 22px;
   margin-top: 0;
@@ -450,6 +518,29 @@ button:disabled {
 
 .rule-item strong {
   display: block;
+}
+
+.rule-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rule-count {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #111827;
+  background: #e5f3ff;
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
+.rule-meta {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 12px;
 }
 
 .rule-actions {
