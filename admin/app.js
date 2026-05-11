@@ -269,7 +269,7 @@ function appendPhotoCards(assets) {
       openPhotoLightbox(asset);
     });
     link.innerHTML = `
-      <img class="photo-card-image" src="${asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
+      <img class="photo-card-image" src="${asset.thumbnailUrl || asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
     `;
     fragment.appendChild(link);
   });

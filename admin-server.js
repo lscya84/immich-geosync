@@ -18,6 +18,7 @@ const {
   getRuleClusterAssets,
   getClusterAssets,
   getAssetPreviewPath,
+  getAssetThumbnailPath,
 } = require('./lib/admin-db');
 
 const app = express();
@@ -231,6 +232,7 @@ app.get('/api/clusters/assets', async (req, res) => {
       assets: assets.map((asset) => ({
         ...asset,
         previewUrl: `/api/assets/${asset.assetId}/preview`,
+        thumbnailUrl: `/api/assets/${asset.assetId}/thumbnail`,
       })),
     });
   } catch (error) {
@@ -250,6 +252,25 @@ app.get('/api/assets/:id/preview', async (req, res) => {
     return res.sendFile(localPath, (error) => {
       if (error && !res.headersSent) {
         res.status(error.statusCode || 500).json({ error: 'preview 전송 실패' });
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/assets/:id/thumbnail', async (req, res) => {
+  try {
+    const thumbnailPath = await getAssetThumbnailPath(req.params.id);
+    if (!thumbnailPath) return res.status(404).json({ error: 'thumbnail을 찾을 수 없습니다.' });
+    if (!thumbnailPath.startsWith('/usr/src/app/upload/')) {
+      return res.status(400).json({ error: '허용되지 않은 thumbnail 경로입니다.' });
+    }
+
+    const localPath = path.join(uploadRoot, thumbnailPath.replace('/usr/src/app/upload/', ''));
+    return res.sendFile(localPath, (error) => {
+      if (error && !res.headersSent) {
+        res.status(error.statusCode || 500).json({ error: 'thumbnail 전송 실패' });
       }
     });
   } catch (error) {
