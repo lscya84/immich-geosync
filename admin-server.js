@@ -38,7 +38,6 @@ const naverStaticMapFormat = (process.env.NAVER_STATIC_MAP_FORMAT || 'png').trim
 const naverStaticMapScale = Math.max(1, Math.min(2, parseInt(process.env.NAVER_STATIC_MAP_SCALE || '1', 10) || 1));
 const naverStaticMapMaxZoom = Math.max(0, Math.min(20, parseInt(process.env.NAVER_STATIC_MAP_MAX_ZOOM || '18', 10) || 18));
 
-app.set('trust proxy', true);
 app.use(express.json({ limit: '1mb' }));
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
 
