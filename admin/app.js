@@ -904,9 +904,33 @@ function buildDisplayClusters(clusters) {
   });
 }
 
+function getClusterMarkerSize(cluster) {
+  const zoom = map?.getZoom?.() || 7;
+  const count = Math.max(1, Number(cluster.assetCount) || 1);
+  let size;
+
+  if (count <= 1) size = 5;
+  else if (count <= 3) size = 7;
+  else if (count <= 10) size = 9;
+  else if (count <= 30) size = 12;
+  else if (count <= 100) size = 15;
+  else if (count <= 300) size = 18;
+  else if (count <= 1000) size = 22;
+  else size = 26;
+
+  if (zoom >= 15) size -= 3;
+  else if (zoom >= 13) size -= 2;
+  else if (zoom >= 11) size -= 1;
+
+  if (cluster.isMergedDisplayCluster && count > 1) size += 1;
+
+  return Math.max(count <= 1 ? 4 : 6, size);
+}
+
 function createClusterMarker(cluster) {
-  const size = Math.max(20, Math.min(44, 16 + Math.round(Math.log2(cluster.assetCount + 1) * 4)));
-  const countLabel = cluster.assetCount > 1 ? `<span class="cluster-marker-count">${cluster.assetCount > 999 ? '999+' : cluster.assetCount}</span>` : '';
+  const size = getClusterMarkerSize(cluster);
+  const showCount = cluster.assetCount > 1 && size >= 12;
+  const countLabel = showCount ? `<span class="cluster-marker-count">${cluster.assetCount > 999 ? '999+' : cluster.assetCount}</span>` : '';
   const marker = createHtmlMarker(
     toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)),
     `cluster-marker${cluster.isMergedDisplayCluster ? ' is-merged' : ''}${cluster.assetCount === 1 ? ' is-single' : ''}`,
