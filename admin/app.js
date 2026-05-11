@@ -544,13 +544,29 @@ function renderClusters(clusters) {
         }),
       });
 
-    marker.bindPopup(`
-      <div class="cluster-popup" data-cluster-lat="${cluster.latitude}" data-cluster-lon="${cluster.longitude}">
-        <strong>사진 ${cluster.assetCount}장</strong>
-        <div>${cluster.state || ''} ${cluster.city || ''}</div>
-        <div class="cluster-popup-gallery is-loading">사진을 불러오는 중입니다...</div>
-      </div>
-    `);
+    const canOpenPopup = cluster.assetCount <= 1 || zoom >= 15;
+    if (canOpenPopup) {
+      marker.bindPopup(`
+        <div class="cluster-popup" data-cluster-lat="${cluster.latitude}" data-cluster-lon="${cluster.longitude}">
+          <strong>사진 ${cluster.assetCount}장</strong>
+          <div>${cluster.state || ''} ${cluster.city || ''}</div>
+          <div class="cluster-popup-gallery is-loading">사진을 불러오는 중입니다...</div>
+        </div>
+      `);
+    }
+
+    marker.on('click', () => {
+      if (cluster.assetCount <= 1) return;
+      const currentZoom = map.getZoom();
+      if (currentZoom < 15) {
+        map.flyTo([cluster.latitude, cluster.longitude], Math.min(15, currentZoom + 2), {
+          animate: true,
+          duration: 0.35,
+        });
+      } else if (canOpenPopup) {
+        marker.openPopup();
+      }
+    });
 
     marker.on('popupopen', async (event) => {
       const root = event.popup.getElement()?.querySelector('.cluster-popup');
