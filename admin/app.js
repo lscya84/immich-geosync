@@ -19,6 +19,7 @@ const ruleModalCloseButton = document.getElementById('rule-modal-close');
 const ruleModalCancelButton = document.getElementById('rule-modal-cancel');
 const ruleModalTitle = document.getElementById('rule-modal-title');
 const ruleModalHint = document.getElementById('rule-modal-hint');
+const startPolygonButton = document.getElementById('start-polygon');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
 const mapWrap = document.querySelector('.map-wrap');
@@ -509,12 +510,31 @@ function updateMapCursor() {
   document.body.classList.toggle('is-drawing-polygon', drawMode === 'polygon');
 }
 
+function updatePolygonToolButton() {
+  const active = drawMode === 'polygon' || Boolean(editingRuleId);
+  startPolygonButton?.classList.toggle('is-active', active);
+  if (!startPolygonButton) return;
+  startPolygonButton.textContent = active ? '✕' : '⬠';
+  startPolygonButton.title = active ? '폴리곤/편집 취소' : '폴리곤 그리기';
+  startPolygonButton.setAttribute('aria-label', active ? '폴리곤/편집 취소' : '폴리곤 그리기');
+}
+
+function cancelPolygonOrEditMode() {
+  drawMode = null;
+  resetDraft();
+  cancelEditing(false);
+  setRuleModalOpen(false);
+  updateMapCursor();
+  updatePolygonToolButton();
+}
+
 function setDrawMode(mode) {
   drawMode = mode;
   updateMapCursor();
   resetDraft();
   cancelEditing();
   setRuleModalOpen(false);
+  updatePolygonToolButton();
   if (isMobileLayout()) setMobilePanelOpen(false);
 }
 
@@ -627,6 +647,7 @@ function cancelEditing(silent = true) {
   editingRuleSnapshot = null;
   clearEditingArtifacts();
   updateEditorModeUi();
+  updatePolygonToolButton();
   if (!silent) setPreviewOutput('편집이 취소되었습니다.');
 }
 
@@ -660,6 +681,7 @@ function startEditingRule(ruleId) {
   });
   if (typeof editingPolygon.setEditable === 'function') editingPolygon.setEditable(true);
   updateEditorModeUi();
+  updatePolygonToolButton();
   map.fitBounds(createPolygonBounds(path), { top: 20, right: 20, bottom: 20, left: 20 });
   setPreviewOutput(`편집 시작: ${rule.name}\n먼저 polygon을 수정한 뒤 완료(✓)를 누르면 규칙 수정 창이 열립니다.`);
 }
@@ -1156,7 +1178,13 @@ function initializeMap() {
 }
 
 function bindUiEvents() {
-  document.getElementById('start-polygon').addEventListener('click', () => setDrawMode('polygon'));
+  document.getElementById('start-polygon').addEventListener('click', () => {
+    if (drawMode === 'polygon' || editingRuleId) {
+      cancelPolygonOrEditMode();
+      return;
+    }
+    setDrawMode('polygon');
+  });
   document.getElementById('clear-shape').addEventListener('click', () => resetDraft());
   document.getElementById('finish-shape').addEventListener('click', () => {
     if (editingRuleId) {
@@ -1262,6 +1290,7 @@ async function init() {
   resetRuleForm();
   updateEditorModeUi();
   updateMapCursor();
+  updatePolygonToolButton();
   setMobilePanelOpen(false);
   resetPhotoPanel();
   bindUiEvents();

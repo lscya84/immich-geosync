@@ -156,6 +156,12 @@ body {
   font-weight: 700;
 }
 
+.toolbar-primary button.is-active {
+  background: #111827;
+  color: #fff;
+  border-color: #111827;
+}
+
 
 #map {
   flex: 1;
