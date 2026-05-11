@@ -55,6 +55,7 @@ let activePhotoAssets = [];
 let activeLightboxIndex = -1;
 const photoPageSize = 12;
 let ruleCountRequestSeq = 0;
+const FULL_CLUSTER_DISPLAY_ZOOM = 15;
 
 function isMobileLayout() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -883,8 +884,68 @@ function getClusterMarkerSize(cluster) {
   return Math.max(14, Math.min(28, 8 + Math.round(Math.log2((Number(cluster.assetCount) || 0) + 1) * 3)));
 }
 
+function getDisplayClusterGridSize(zoom) {
+  if (zoom >= FULL_CLUSTER_DISPLAY_ZOOM) return 0;
+  if (zoom <= 7) return 0.8;
+  if (zoom <= 9) return 0.25;
+  if (zoom <= 11) return 0.08;
+  if (zoom <= 13) return 0.03;
+  return 0.01;
+}
+
+function buildDisplayClusters(clusters) {
+  const zoom = map?.getZoom?.() || 7;
+  const gridSize = getDisplayClusterGridSize(zoom);
+  if (!gridSize) {
+    return clusters.map((cluster) => ({
+      ...cluster,
+      sourceClusters: [cluster],
+      mergedClusterCount: 1,
+      isMergedDisplayCluster: false,
+    }));
+  }
+
+  const grouped = new Map();
+  clusters.forEach((cluster) => {
+    const latKey = Math.floor(Number(cluster.latitude) / gridSize);
+    const lngKey = Math.floor(Number(cluster.longitude) / gridSize);
+    const key = `${zoom}:${latKey}:${lngKey}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        bucketKey: key,
+        latitudeSum: 0,
+        longitudeSum: 0,
+        assetCount: 0,
+        sourceClusters: [],
+      });
+    }
+    const bucket = grouped.get(key);
+    const weight = Math.max(1, Number(cluster.assetCount) || 1);
+    bucket.latitudeSum += Number(cluster.latitude) * weight;
+    bucket.longitudeSum += Number(cluster.longitude) * weight;
+    bucket.assetCount += weight;
+    bucket.sourceClusters.push(cluster);
+  });
+
+  return [...grouped.values()].map((bucket) => {
+    const primary = bucket.sourceClusters[0];
+    const mergedClusterCount = bucket.sourceClusters.length;
+    return {
+      ...primary,
+      clusterKey: bucket.bucketKey,
+      latitude: bucket.latitudeSum / bucket.assetCount,
+      longitude: bucket.longitudeSum / bucket.assetCount,
+      assetCount: bucket.assetCount,
+      sourceClusters: bucket.sourceClusters,
+      mergedClusterCount,
+      isMergedDisplayCluster: mergedClusterCount > 1,
+    };
+  });
+}
+
 function getClusterMarkerClassName(cluster) {
   const classes = ['cluster-marker'];
+  if (cluster.isMergedDisplayCluster) classes.push('is-merged');
   if (cluster.ruleId || cluster.clusterType === 'single_rule') classes.push('is-rule');
   if (cluster.assetCount === 1) classes.push('is-single');
   return classes.join(' ');
@@ -949,9 +1010,10 @@ function refreshClustersNow() {
 }
 
 function renderClusters(clusters) {
+  const displayClusters = buildDisplayClusters(clusters);
   const nextKeys = new Set();
 
-  clusters.forEach((cluster) => {
+  displayClusters.forEach((cluster) => {
     const key = cluster.clusterKey || `${cluster.latitude}_${cluster.longitude}_${cluster.assetCount}_${cluster.ruleId || ''}`;
     nextKeys.add(key);
 
