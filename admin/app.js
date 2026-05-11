@@ -55,7 +55,7 @@ let activePhotoAssets = [];
 let activeLightboxIndex = -1;
 const photoPageSize = 12;
 let ruleCountRequestSeq = 0;
-const FULL_CLUSTER_DISPLAY_ZOOM = 15;
+const FULL_CLUSTER_DISPLAY_ZOOM = 16;
 
 function isMobileLayout() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -954,8 +954,11 @@ function getClusterMarkerClassName(cluster) {
 function buildClusterMarkerIcon(cluster) {
   const size = getClusterMarkerSize(cluster);
   const className = getClusterMarkerClassName(cluster);
+  const countLabel = Number(cluster.assetCount) > 1
+    ? `<span class="cluster-marker-count">${cluster.assetCount > 999 ? '999+' : cluster.assetCount}</span>`
+    : '';
   return {
-    content: `<div class="${className}" style="width:${size}px;height:${size}px;"><div class="cluster-marker-inner"></div></div>`,
+    content: `<div class="${className}" style="width:${size}px;height:${size}px;"><div class="cluster-marker-inner"></div>${countLabel}</div>`,
     size: new naver.maps.Size(size, size),
     anchor: new naver.maps.Point(size / 2, size / 2),
   };
