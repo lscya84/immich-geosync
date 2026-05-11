@@ -772,17 +772,79 @@ function renderRules(rules) {
   });
 }
 
+function getDisplayClusterGridSize(zoom) {
+  if (zoom <= 7) return 0.8;
+  if (zoom <= 9) return 0.25;
+  if (zoom <= 11) return 0.08;
+  if (zoom <= 13) return 0.03;
+  return 0;
+}
+
+function buildDisplayClusters(clusters) {
+  const zoom = map?.getZoom?.() || 7;
+  const gridSize = getDisplayClusterGridSize(zoom);
+  if (!gridSize) {
+    return clusters.map((cluster) => ({
+      ...cluster,
+      sourceClusters: [cluster],
+      mergedClusterCount: 1,
+      isMergedDisplayCluster: false,
+    }));
+  }
+
+  const grouped = new Map();
+  clusters.forEach((cluster) => {
+    const latKey = Math.floor(cluster.latitude / gridSize);
+    const lngKey = Math.floor(cluster.longitude / gridSize);
+    const key = `${latKey}:${lngKey}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        latitudeSum: 0,
+        longitudeSum: 0,
+        assetCount: 0,
+        sourceClusters: [],
+      });
+    }
+    const bucket = grouped.get(key);
+    const weight = Math.max(1, Number(cluster.assetCount) || 1);
+    bucket.latitudeSum += Number(cluster.latitude) * weight;
+    bucket.longitudeSum += Number(cluster.longitude) * weight;
+    bucket.assetCount += weight;
+    bucket.sourceClusters.push(cluster);
+  });
+
+  return [...grouped.values()].map((bucket) => {
+    const primary = bucket.sourceClusters[0];
+    const mergedClusterCount = bucket.sourceClusters.length;
+    return {
+      ...primary,
+      latitude: bucket.latitudeSum / bucket.assetCount,
+      longitude: bucket.longitudeSum / bucket.assetCount,
+      assetCount: bucket.assetCount,
+      sourceClusters: bucket.sourceClusters,
+      mergedClusterCount,
+      isMergedDisplayCluster: mergedClusterCount > 1,
+    };
+  });
+}
+
 function createClusterMarker(cluster) {
-  const size = Math.max(14, Math.min(28, 8 + Math.round(Math.log2(cluster.assetCount + 1) * 3)));
+  const size = Math.max(20, Math.min(44, 16 + Math.round(Math.log2(cluster.assetCount + 1) * 4)));
+  const countLabel = cluster.assetCount > 1 ? `<span class="cluster-marker-count">${cluster.assetCount > 999 ? '999+' : cluster.assetCount}</span>` : '';
   const marker = createHtmlMarker(
     toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)),
-    'cluster-marker',
+    `cluster-marker${cluster.isMergedDisplayCluster ? ' is-merged' : ''}${cluster.assetCount === 1 ? ' is-single' : ''}`,
     size,
-    `<div class="cluster-marker-inner"></div>`,
+    `<div class="cluster-marker-inner"></div>${countLabel}`,
   );
   naver.maps.Event.addListener(marker, 'click', () => {
-    map.panTo(toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)));
-    openPhotoPanelForCluster(cluster).catch((error) => {
+    const target = toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude));
+    if (cluster.isMergedDisplayCluster && map.getZoom() < 16) {
+      map.morph(target, Math.min(18, map.getZoom() + 2));
+      return;
+    }
+    map.panTo(target);
+    openPhotoPanelForCluster(cluster.sourceClusters?.[0] || cluster).catch((error) => {
       console.error(error);
       if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
     });
@@ -792,7 +854,7 @@ function createClusterMarker(cluster) {
 
 function renderClusters(clusters) {
   clearOverlayList(clusterOverlays);
-  clusters.forEach((cluster) => {
+  buildDisplayClusters(clusters).forEach((cluster) => {
     clusterOverlays.push(createClusterMarker(cluster));
   });
 }
