@@ -94,6 +94,18 @@
       </main>
     </div>
 
+    <div id="photo-lightbox" class="photo-lightbox" aria-hidden="true">
+      <div id="photo-lightbox-backdrop" class="photo-lightbox-backdrop"></div>
+      <div class="photo-lightbox-dialog">
+        <button id="photo-lightbox-close" type="button" aria-label="큰 사진 닫기">✕</button>
+        <img id="photo-lightbox-image" class="photo-lightbox-image" alt="preview" />
+        <div class="photo-lightbox-meta">
+          <div id="photo-lightbox-title" class="photo-lightbox-title"></div>
+          <div id="photo-lightbox-date" class="photo-lightbox-date"></div>
+        </div>
+      </div>
+    </div>
+
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="

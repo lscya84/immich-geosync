@@ -214,6 +214,7 @@ body {
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
   text-decoration: none;
   color: inherit;
+  cursor: zoom-in;
 }
 
 .photo-card-image {
@@ -241,6 +242,73 @@ body {
   font-size: 12px;
   color: #6b7280;
   word-break: break-word;
+}
+
+.photo-lightbox {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.photo-lightbox.is-open {
+  display: flex;
+}
+
+.photo-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.82);
+  backdrop-filter: blur(4px);
+}
+
+.photo-lightbox-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(92vw, 1100px);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.photo-lightbox-dialog button {
+  align-self: flex-end;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.photo-lightbox-image {
+  width: 100%;
+  max-height: calc(90vh - 96px);
+  object-fit: contain;
+  border-radius: 16px;
+  background: #111827;
+}
+
+.photo-lightbox-meta {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.photo-lightbox-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.photo-lightbox-date {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6b7280;
 }
 
 h1 {

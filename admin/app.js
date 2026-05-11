@@ -28,6 +28,12 @@ const photoPanelSubtitle = document.getElementById('photo-panel-subtitle');
 const photoPanelList = document.getElementById('photo-panel-list');
 const photoPanelStatus = document.getElementById('photo-panel-status');
 const photoPanelCloseButton = document.getElementById('photo-panel-close');
+const photoLightbox = document.getElementById('photo-lightbox');
+const photoLightboxBackdrop = document.getElementById('photo-lightbox-backdrop');
+const photoLightboxCloseButton = document.getElementById('photo-lightbox-close');
+const photoLightboxImage = document.getElementById('photo-lightbox-image');
+const photoLightboxTitle = document.getElementById('photo-lightbox-title');
+const photoLightboxDate = document.getElementById('photo-lightbox-date');
 
 let drawMode = null;
 let draftPoints = [];
@@ -142,6 +148,25 @@ function setPhotoPanelOpen(open) {
   photoPanel?.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
 
+function setPhotoLightboxOpen(open) {
+  photoLightbox?.classList.toggle('is-open', open);
+  photoLightbox?.setAttribute('aria-hidden', open ? 'false' : 'true');
+}
+
+function openPhotoLightbox(asset) {
+  if (!photoLightboxImage) return;
+  photoLightboxImage.src = asset.previewUrl;
+  photoLightboxImage.alt = asset.originalFileName || asset.assetId;
+  if (photoLightboxTitle) photoLightboxTitle.textContent = asset.originalFileName || asset.assetId;
+  if (photoLightboxDate) photoLightboxDate.textContent = `${formatAssetDate(asset.fileCreatedAt)} · ${asset.state || ''} ${asset.city || ''}`.trim();
+  setPhotoLightboxOpen(true);
+}
+
+function closePhotoLightbox() {
+  if (photoLightboxImage) photoLightboxImage.src = '';
+  setPhotoLightboxOpen(false);
+}
+
 function resetPhotoPanel() {
   activePhotoCluster = null;
   activePhotoOffset = 0;
@@ -172,8 +197,10 @@ function appendPhotoCards(assets) {
     const link = document.createElement('a');
     link.className = 'photo-card';
     link.href = asset.previewUrl;
-    link.target = '_blank';
-    link.rel = 'noreferrer';
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      openPhotoLightbox(asset);
+    });
     link.innerHTML = `
       <img class="photo-card-image" src="${asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
       <div class="photo-card-meta">
@@ -753,6 +780,11 @@ document.getElementById('refresh-clusters').addEventListener('click', () => load
 mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
 mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
 photoPanelCloseButton?.addEventListener('click', resetPhotoPanel);
+photoLightboxCloseButton?.addEventListener('click', closePhotoLightbox);
+photoLightboxBackdrop?.addEventListener('click', closePhotoLightbox);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closePhotoLightbox();
+});
 photoPanelList?.addEventListener('scroll', () => {
   if (!photoPanelList || activePhotoLoading || !activePhotoHasMore) return;
   const remaining = photoPanelList.scrollHeight - photoPanelList.scrollTop - photoPanelList.clientHeight;
