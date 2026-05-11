@@ -885,7 +885,7 @@ function getDisplayClusterGridSize(zoom) {
   if (zoom <= 11) return 0.08;
   if (zoom <= 13) return 0.03;
   if (zoom <= 15) return 0.004;
-  return 0;
+  return 0.002;
 }
 
 function buildDisplayClusters(clusters) {
