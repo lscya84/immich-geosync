@@ -370,6 +370,9 @@ app.put('/api/clusters/location', async (req, res) => {
   if (req.body?.isMergedDisplayCluster) {
     return res.status(400).json({ error: '합쳐진 표시 클러스터는 바로 수정할 수 없습니다.' });
   }
+  if (Number(req.body?.mergedClusterCount || 1) > 1) {
+    return res.status(400).json({ error: '최소단위 클러스터에서만 수정할 수 있습니다.' });
+  }
 
   try {
     const result = await updateClusterAddress({

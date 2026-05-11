@@ -302,6 +302,14 @@ function formatClusterLocation(cluster = {}) {
   return `${cluster.state || ''} ${cluster.city || ''}`.trim();
 }
 
+function canEditActivePhotoClusterLocation() {
+  if (!activePhotoCluster) return false;
+  if (activePhotoCluster.isMergedDisplayCluster) return false;
+  if ((activePhotoCluster.mergedClusterCount || 1) > 1) return false;
+  if ((map?.getZoom?.() || 0) < FULL_CLUSTER_DISPLAY_ZOOM) return false;
+  return true;
+}
+
 function parseClusterLocationInput(value) {
   const normalized = String(value || '').trim().replace(/\s+/g, ' ');
   if (!normalized) return { state: '', city: '' };
@@ -327,12 +335,9 @@ function renderPhotoPanelSubtitle() {
     return;
   }
 
-  if (activePhotoCluster.isMergedDisplayCluster) {
-    photoPanelSubtitle.textContent = formatClusterLocation(activePhotoCluster) || '합쳐진 클러스터';
-    return;
-  }
+  const canEditLocation = canEditActivePhotoClusterLocation();
 
-  if (isEditingPhotoLocation) {
+  if (isEditingPhotoLocation && canEditLocation) {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'photo-panel-location-input';
@@ -360,6 +365,7 @@ function renderPhotoPanelSubtitle() {
               longitude: activePhotoCluster.longitude,
               precision: activePhotoCluster.precision || 5,
               isMergedDisplayCluster: activePhotoCluster.isMergedDisplayCluster === true,
+              mergedClusterCount: activePhotoCluster.mergedClusterCount || 1,
               state: nextLocation.state,
               city: nextLocation.city,
             }),
@@ -396,16 +402,27 @@ function renderPhotoPanelSubtitle() {
     return;
   }
 
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'photo-panel-location-button';
-  button.textContent = formatClusterLocation(activePhotoCluster) || '위치 정보 입력';
-  button.disabled = isSavingPhotoLocation;
-  button.addEventListener('click', () => {
-    isEditingPhotoLocation = true;
-    renderPhotoPanelSubtitle();
-  });
-  photoPanelSubtitle.appendChild(button);
+  const text = document.createElement(canEditLocation ? 'button' : 'div');
+  if (canEditLocation) {
+    text.type = 'button';
+    text.className = 'photo-panel-location-text is-editable';
+    text.disabled = isSavingPhotoLocation;
+    text.addEventListener('click', () => {
+      isEditingPhotoLocation = true;
+      renderPhotoPanelSubtitle();
+    });
+  } else {
+    text.className = 'photo-panel-location-text';
+  }
+  text.textContent = formatClusterLocation(activePhotoCluster) || '위치 정보 없음';
+  photoPanelSubtitle.appendChild(text);
+
+  if (!canEditLocation) {
+    const hint = document.createElement('div');
+    hint.className = 'photo-panel-location-hint';
+    hint.textContent = '최대 확대 상태의 최소단위 클러스터에서만 수정할 수 있습니다.';
+    photoPanelSubtitle.appendChild(hint);
+  }
 }
 
 function resetPhotoPanel() {

@@ -222,22 +222,34 @@ body.is-drawing-polygon #map * {
   gap: 10px;
 }
 
-.photo-panel-location-button {
+.photo-panel-location-text {
+  margin-top: 2px;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  word-break: keep-all;
+}
+
+button.photo-panel-location-text {
   display: inline-flex;
   align-items: center;
   padding: 0;
-  margin: 2px 0 0;
   background: transparent;
   border: 0;
-  color: #4b5563;
-  font-size: 13px;
-  text-align: left;
   cursor: pointer;
 }
 
-.photo-panel-location-button:hover {
+button.photo-panel-location-text.is-editable:hover {
   color: #111827;
   text-decoration: underline;
+}
+
+.photo-panel-location-hint {
+  margin-top: 4px;
+  color: #9ca3af;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .photo-panel-location-input {
