@@ -14,6 +14,8 @@ const saveRuleButton = document.getElementById('save-rule-button');
 const saveApplyRuleButton = document.getElementById('save-apply-rule-button');
 const saveEditButton = document.getElementById('save-edit');
 const cancelEditButton = document.getElementById('cancel-edit');
+const editorSectionTitle = document.getElementById('editor-section-title');
+const editorModeHint = document.getElementById('editor-mode-hint');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
 
@@ -26,6 +28,8 @@ let editingPolygon = null;
 let editingHandles = [];
 let editingMidpoints = [];
 let editingRuleSnapshot = null;
+
+const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.';
 
 function isMobileLayout() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -104,6 +108,22 @@ function setEditingButtons(enabled) {
   cancelEditButton.disabled = !enabled;
 }
 
+function updateEditorModeUi() {
+  const isEditing = Boolean(editingRuleId);
+  saveRuleButton.disabled = isEditing;
+  saveApplyRuleButton.disabled = isEditing;
+
+  if (editorSectionTitle) {
+    editorSectionTitle.textContent = isEditing ? '규칙 편집 중' : '규칙 추가';
+  }
+
+  if (editorModeHint) {
+    editorModeHint.textContent = isEditing
+      ? '편집 중입니다. 지도 오른쪽 위의 💾 버튼으로 저장하고, ✕ 버튼으로 편집을 취소하세요.'
+      : defaultEditorHint;
+  }
+}
+
 function getRuleById(ruleId) {
   return currentRules.find((rule) => rule.id === ruleId) || null;
 }
@@ -129,11 +149,72 @@ function fillRuleForm(rule) {
   ruleForm.country.value = rule.country || '대한민국';
   ruleForm.state.value = rule.state || '';
   ruleForm.city.value = rule.city || '';
-  ruleForm.building.value = rule.building || '';
   ruleForm.priority.value = rule.priority ?? 100;
   ruleForm.applyAsOverride.checked = rule.applyAsOverride !== false;
   ruleForm.treatAsSingleCluster.checked = rule.treatAsSingleCluster === true;
   ruleForm.enabled.checked = rule.enabled !== false;
+}
+
+function getPolygonCentroid(geometry) {
+  const coordinates = Array.isArray(geometry?.coordinates)
+    ? geometry.coordinates.filter((pair) => Array.isArray(pair) && pair.length >= 2)
+    : [];
+  if (coordinates.length < 3) return null;
+
+  const ring = [...coordinates];
+  const [firstLon, firstLat] = ring[0];
+  const [lastLon, lastLat] = ring[ring.length - 1];
+  if (firstLon !== lastLon || firstLat !== lastLat) {
+    ring.push([firstLon, firstLat]);
+  }
+
+  let areaFactor = 0;
+  let centroidLon = 0;
+  let centroidLat = 0;
+
+  for (let i = 0; i < ring.length - 1; i += 1) {
+    const [x0, y0] = ring[i].map(Number);
+    const [x1, y1] = ring[i + 1].map(Number);
+    const cross = x0 * y1 - x1 * y0;
+    areaFactor += cross;
+    centroidLon += (x0 + x1) * cross;
+    centroidLat += (y0 + y1) * cross;
+  }
+
+  if (Math.abs(areaFactor) < Number.EPSILON) {
+    const points = ring.slice(0, -1);
+    return {
+      lng: points.reduce((sum, [lng]) => sum + Number(lng), 0) / points.length,
+      lat: points.reduce((sum, [, lat]) => sum + Number(lat), 0) / points.length,
+    };
+  }
+
+  return {
+    lng: centroidLon / (areaFactor * 3),
+    lat: centroidLat / (areaFactor * 3),
+  };
+}
+
+async function autofillAddressFromGeometry(geometry) {
+  if (!geometry || geometry.type !== 'Polygon') return;
+  const centroid = getPolygonCentroid(geometry);
+  if (!centroid) return;
+
+  setPreviewOutput('폴리곤 중심점 기준 주소를 조회하는 중입니다...');
+  const result = await fetchJson('/api/reverse-geocode/centroid', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ geometry }),
+  });
+
+  ruleForm.country.value = result.address?.country || '대한민국';
+  ruleForm.state.value = result.address?.state || '';
+  ruleForm.city.value = result.address?.city || '';
+  setPreviewOutput(JSON.stringify({
+    message: '폴리곤 중심점 기준 주소를 자동으로 채웠습니다.',
+    centroid: result.centroid,
+    address: result.address,
+  }, null, 2));
 }
 
 function cancelEditing(silent = true) {
@@ -141,6 +222,7 @@ function cancelEditing(silent = true) {
   editingRuleSnapshot = null;
   clearEditingArtifacts();
   setEditingButtons(false);
+  updateEditorModeUi();
   if (!silent) setPreviewOutput('편집이 취소되었습니다.');
 }
 
@@ -273,6 +355,7 @@ function startEditingRule(ruleId) {
   }).addTo(editLayer);
   renderEditHandles();
   setEditingButtons(true);
+  updateEditorModeUi();
   map.fitBounds(editingPolygon.getBounds(), { padding: [20, 20] });
   setPreviewOutput(`편집 시작: ${rule.name}\n꼭짓점을 드래그해 이동, 작은 점 탭으로 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.`);
   if (isMobileLayout()) setMobilePanelOpen(true);
@@ -288,7 +371,7 @@ function getRulePayloadFromForm(geometry) {
     country: formData.get('country'),
     state: formData.get('state'),
     city: formData.get('city'),
-    building: formData.get('building'),
+    building: '',
     priority: Number(formData.get('priority') || 100),
     applyAsOverride: formData.get('applyAsOverride') === 'on',
     treatAsSingleCluster: formData.get('treatAsSingleCluster') === 'on',
@@ -360,7 +443,7 @@ function renderRules(rules) {
       <div>type: ${rule.ruleType}</div>
       <div>priority: ${rule.priority}</div>
       <div>override: ${rule.applyAsOverride ? 'on' : 'off'} / single cluster: ${rule.treatAsSingleCluster ? 'on' : 'off'}</div>
-      <div>${rule.state || ''} ${rule.city || ''} ${rule.building || ''}</div>
+      <div>${rule.state || ''} ${rule.city || ''}</div>
       <div class="rule-actions">
         <button type="button" data-action="preview">preview</button>
         <button type="button" data-action="apply">apply</button>
@@ -476,7 +559,18 @@ document.getElementById('finish-shape').addEventListener('click', () => {
     alert('완성된 도형이 없습니다.');
     return;
   }
-  alert('도형이 준비되었습니다. 왼쪽 폼에서 저장하세요.');
+  autofillAddressFromGeometry(geometry)
+    .then(() => {
+      alert('도형이 준비되었고 주소를 자동으로 채웠습니다. 왼쪽 폼에서 저장하세요.');
+      if (isMobileLayout()) setMobilePanelOpen(true);
+      document.querySelector('.panel-section[data-section="editor"]')?.classList.add('is-open');
+    })
+    .catch((error) => {
+      console.error(error);
+      setPreviewOutput(`주소 자동 채우기 실패: ${error.message}`);
+      alert(`도형은 준비되었지만 주소 자동 채우기에 실패했습니다.\n${error.message}`);
+      if (isMobileLayout()) setMobilePanelOpen(true);
+    });
 });
 document.getElementById('refresh-rules').addEventListener('click', loadRules);
 document.getElementById('refresh-clusters').addEventListener('click', loadClusters);
@@ -506,7 +600,7 @@ async function handleRuleSubmit(submitMode) {
 
   const geometry = getDraftGeometry();
   if (!geometry) {
-    alert('먼저 지도에서 point 또는 polygon을 그려주세요.');
+    alert('먼저 지도에서 polygon을 그려주세요.');
     return;
   }
 
@@ -549,6 +643,7 @@ saveApplyRuleButton.addEventListener('click', () => submitRuleForm('save-apply')
 }));
 
 resetRuleForm();
+updateEditorModeUi();
 setMobilePanelOpen(false);
 Promise.all([loadRules(), loadClusters()]).catch((error) => {
   console.error(error);

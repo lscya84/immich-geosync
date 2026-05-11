@@ -1,5 +1,7 @@
 const path = require('path');
 const express = require('express');
+const { fetchVworldAddressDetailed } = require('./lib/vworld');
+const { getPolygonCentroid } = require('./lib/cluster-rule-address');
 const {
   ensureAdminTables,
   listRules,
@@ -42,6 +44,43 @@ function validateGroupPayload(body) {
 
 app.get('/healthz', (req, res) => {
   res.json({ ok: true });
+});
+
+app.post('/api/reverse-geocode/centroid', async (req, res) => {
+  const geometry = req.body?.geometry;
+  if (!geometry || geometry.type !== 'Polygon') {
+    return res.status(400).json({ error: 'polygon geometry가 필요합니다.' });
+  }
+
+  const centroid = getPolygonCentroid(geometry);
+  if (!centroid) {
+    return res.status(400).json({ error: 'polygon 중심점을 계산할 수 없습니다.' });
+  }
+
+  try {
+    const result = await fetchVworldAddressDetailed(centroid.lat, centroid.lon, {
+      vworldKey: (process.env.VWORLD_API_KEY || '').trim(),
+      apiTimeoutMs: parseInt(process.env.NAVER_API_TIMEOUT_MS || process.env.API_TIMEOUT_MS || '10000', 10),
+    });
+
+    if (!result.address) {
+      return res.status(502).json({
+        error: `VWorld 주소 조회 실패: ${result.reason || 'unknown'}`,
+        centroid,
+      });
+    }
+
+    return res.json({
+      centroid,
+      address: {
+        country: result.address.country || '대한민국',
+        state: result.address.state || '',
+        city: result.address.city || '',
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message, centroid });
+  }
 });
 
 app.get('/api/rules', async (req, res) => {

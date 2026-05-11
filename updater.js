@@ -5,6 +5,7 @@ const path = require('path');
 const { randomUUID } = require('crypto');
 const { reverseGeocode, translateLocation } = require('./lib/geocode');
 const { findMatchingRule, findMatchingGeometryEntity, buildRuleAddress } = require('./lib/override-rules');
+const { buildClusterRuleAddress } = require('./lib/cluster-rule-address');
 
 const config = {
     naverId: (process.env.NAVER_CLIENT_ID || '').trim(),
@@ -537,8 +538,18 @@ async function main(forceUpdate = false) {
             console.log(`[${nowKst()}] 🧷 Override Phase 시작: 수동 rule 적용 (${overrideClusters.length}개 / ${overridePhotos}장)`);
             const overrideItems = [];
             for (const cluster of overrideClusters) {
+                const overrideAddress = cluster.overrideRule.treatAsSingleCluster === true
+                    ? await buildClusterRuleAddress(cluster.overrideRule, config, {
+                        fallbackState: cluster.points[0]?.state,
+                        fallbackCity: cluster.points[0]?.city,
+                    })
+                    : cluster.overrideAddress;
                 for (const assetId of cluster.assetIds) {
-                    overrideItems.push({ assetId, state: cluster.overrideAddress.state, city: cluster.overrideAddress.city });
+                    overrideItems.push({ assetId, state: overrideAddress.state, city: overrideAddress.city });
+                }
+
+                if (overrideAddress.source === 'override-single-cluster-vworld') {
+                    await sleep(config.delay);
                 }
             }
             overrideUpdated = await bulkUpdateAssets(client, overrideItems);

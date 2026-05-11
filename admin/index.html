@@ -22,7 +22,7 @@
 
         <section class="panel-section is-open" data-section="editor">
           <button class="panel-section-toggle" type="button" data-panel-toggle="editor" aria-expanded="true">
-            <span>규칙 추가</span>
+            <span id="editor-section-title">규칙 추가</span>
           </button>
           <div class="panel-section-body">
           <form id="rule-form">
@@ -30,13 +30,12 @@
             <label>국가<input name="country" value="대한민국" /></label>
             <label>시/도<input name="state" /></label>
             <label>도시/구/동<input name="city" /></label>
-            <label>건물명<input name="building" /></label>
             <label>우선순위<input type="number" name="priority" value="100" /></label>
             <label class="checkbox"><input type="checkbox" name="applyAsOverride" checked /> 주소 override로 사용</label>
             <label class="checkbox"><input type="checkbox" name="treatAsSingleCluster" /> 폴리곤 내부를 단일 클러스터로 취급</label>
             <label class="checkbox"><input type="checkbox" name="enabled" checked /> 활성화</label>
           </form>
-          <p class="hint">polygon은 3개 이상 점을 찍고 완료하세요. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.</p>
+          <p id="editor-mode-hint" class="hint">polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.</p>
           </div>
         </section>
 
