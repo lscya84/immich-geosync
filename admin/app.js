@@ -270,11 +270,6 @@ function appendPhotoCards(assets) {
     });
     link.innerHTML = `
       <img class="photo-card-image" src="${asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
-      <div class="photo-card-meta">
-        <div class="photo-card-title">${asset.originalFileName || asset.assetId}</div>
-        <div class="photo-card-date">${formatAssetDate(asset.fileCreatedAt)}</div>
-        <div class="photo-card-location">${asset.state || ''} ${asset.city || ''}</div>
-      </div>
     `;
     fragment.appendChild(link);
   });
