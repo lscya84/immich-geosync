@@ -401,19 +401,25 @@ function renderPhotoPanelSubtitle() {
     return;
   }
 
-  const text = document.createElement(canEditLocation ? 'button' : 'div');
+  const text = document.createElement('div');
+  text.className = canEditLocation ? 'photo-panel-location-text is-editable' : 'photo-panel-location-text';
+  text.textContent = formatClusterLocation(activePhotoCluster) || '위치 정보 없음';
+
   if (canEditLocation) {
-    text.type = 'button';
-    text.className = 'photo-panel-location-text is-editable';
-    text.disabled = isSavingPhotoLocation;
+    text.setAttribute('role', 'button');
+    text.setAttribute('tabindex', '0');
     text.addEventListener('click', () => {
       isEditingPhotoLocation = true;
       renderPhotoPanelSubtitle();
     });
-  } else {
-    text.className = 'photo-panel-location-text';
+    text.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      isEditingPhotoLocation = true;
+      renderPhotoPanelSubtitle();
+    });
   }
-  text.textContent = formatClusterLocation(activePhotoCluster) || '위치 정보 없음';
+
   photoPanelSubtitle.appendChild(text);
 }
 

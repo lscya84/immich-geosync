@@ -233,11 +233,14 @@ body.is-drawing-polygon #map * {
   min-width: 0;
 }
 
+#photo-panel-subtitle {
+  margin-top: 2px;
+}
+
 .photo-panel-location-text {
   display: block;
   width: 100%;
   min-width: 0;
-  margin-top: 2px;
   color: #4b5563;
   font-size: 13px;
   line-height: 1.45;
@@ -247,15 +250,11 @@ body.is-drawing-polygon #map * {
   text-overflow: ellipsis;
 }
 
-button.photo-panel-location-text {
-  display: block;
-  padding: 0;
-  background: transparent;
-  border: 0;
+.photo-panel-location-text.is-editable {
   cursor: pointer;
 }
 
-button.photo-panel-location-text.is-editable:hover {
+.photo-panel-location-text.is-editable:hover {
   color: #111827;
   text-decoration: underline;
 }
