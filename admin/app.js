@@ -853,7 +853,8 @@ function getDisplayClusterGridSize(zoom) {
   if (zoom <= 9) return 0.25;
   if (zoom <= 11) return 0.08;
   if (zoom <= 13) return 0.03;
-  return 0;
+  if (zoom <= 15) return 0.008;
+  return 0.004;
 }
 
 function buildDisplayClusters(clusters) {
@@ -909,27 +910,26 @@ function getClusterMarkerSize(cluster) {
   const count = Math.max(1, Number(cluster.assetCount) || 1);
   let size;
 
-  if (count <= 1) size = 5;
-  else if (count <= 3) size = 7;
-  else if (count <= 10) size = 9;
-  else if (count <= 30) size = 12;
-  else if (count <= 100) size = 15;
+  if (count <= 1) size = 8;
+  else if (count <= 3) size = 10;
+  else if (count <= 10) size = 12;
+  else if (count <= 30) size = 14;
+  else if (count <= 100) size = 16;
   else if (count <= 300) size = 18;
   else if (count <= 1000) size = 22;
   else size = 26;
 
-  if (zoom >= 15) size -= 3;
-  else if (zoom >= 13) size -= 2;
-  else if (zoom >= 11) size -= 1;
+  if (zoom >= 15) size -= 2;
+  else if (zoom >= 13) size -= 1;
 
   if (cluster.isMergedDisplayCluster && count > 1) size += 1;
 
-  return Math.max(count <= 1 ? 4 : 6, size);
+  return Math.max(count <= 1 ? 7 : 9, size);
 }
 
 function createClusterMarker(cluster) {
   const size = getClusterMarkerSize(cluster);
-  const showCount = cluster.assetCount > 1 && size >= 12;
+  const showCount = cluster.assetCount > 1 && size >= 14;
   const countLabel = showCount ? `<span class="cluster-marker-count">${cluster.assetCount > 999 ? '999+' : cluster.assetCount}</span>` : '';
   const marker = createHtmlMarker(
     toLatLng(createLatLngLiteral(cluster.latitude, cluster.longitude)),
