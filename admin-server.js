@@ -1,6 +1,6 @@
 const path = require('path');
 const express = require('express');
-const { fetchVworldAddressDetailed } = require('./lib/vworld');
+const { reverseGeocode } = require('./lib/geocode');
 const { getPolygonCentroid } = require('./lib/cluster-rule-address');
 const {
   ensureAdminTables,
@@ -58,14 +58,18 @@ app.post('/api/reverse-geocode/centroid', async (req, res) => {
   }
 
   try {
-    const result = await fetchVworldAddressDetailed(centroid.lat, centroid.lon, {
+    const result = await reverseGeocode(centroid.lat, centroid.lon, {
+      naverId: (process.env.NAVER_CLIENT_ID || '').trim(),
+      naverSecret: (process.env.NAVER_CLIENT_SECRET || '').trim(),
       vworldKey: (process.env.VWORLD_API_KEY || '').trim(),
       apiTimeoutMs: parseInt(process.env.NAVER_API_TIMEOUT_MS || process.env.API_TIMEOUT_MS || '10000', 10),
+    }, {
+      preferBuildingName: true,
     });
 
-    if (!result.address) {
+    if (!result.ok) {
       return res.status(502).json({
-        error: `VWorld 주소 조회 실패: ${result.reason || 'unknown'}`,
+        error: `중심점 주소 조회 실패: ${result.error || 'unknown'}`,
         centroid,
       });
     }
@@ -73,9 +77,11 @@ app.post('/api/reverse-geocode/centroid', async (req, res) => {
     return res.json({
       centroid,
       address: {
-        country: result.address.country || '대한민국',
-        state: result.address.state || '',
-        city: result.address.city || '',
+        country: result.summary.country || '대한민국',
+        state: result.summary.state || '',
+        city: result.summary.buildingName || result.summary.city || '',
+        buildingName: result.summary.buildingName || '',
+        fallbackCity: result.summary.city || '',
       },
     });
   } catch (error) {
