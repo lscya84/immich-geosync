@@ -114,6 +114,11 @@ body {
   right: 12px;
   z-index: 700;
   pointer-events: none;
+  transition: right 0.22s ease;
+}
+
+.map-wrap.photo-panel-open .map-floating-tools {
+  right: 372px;
 }
 
 .toolbar-primary {
@@ -592,6 +597,10 @@ button:disabled {
 
   .map-floating-tools {
     top: 10px;
+    right: 10px;
+  }
+
+  .map-wrap.photo-panel-open .map-floating-tools {
     right: 10px;
   }
 

@@ -22,6 +22,7 @@ const editorSectionTitle = document.getElementById('editor-section-title');
 const editorModeHint = document.getElementById('editor-mode-hint');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
+const mapWrap = document.querySelector('.map-wrap');
 const mapStage = document.querySelector('.map-stage');
 const photoPanel = document.getElementById('photo-panel');
 const photoPanelTitle = document.getElementById('photo-panel-title');
@@ -149,6 +150,7 @@ function formatAssetDateGroupLabel(value) {
 }
 
 function setPhotoPanelOpen(open) {
+  mapWrap?.classList.toggle('photo-panel-open', open);
   mapStage?.classList.toggle('photo-panel-open', open);
   photoPanel?.setAttribute('aria-hidden', open ? 'false' : 'true');
 }
