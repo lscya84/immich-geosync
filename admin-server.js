@@ -282,8 +282,8 @@ app.get('/api/clusters', async (req, res) => {
 function withAssetUrls(assets = []) {
   return assets.map((asset) => ({
     ...asset,
-    previewUrl: `/api/assets/${asset.assetId}/preview`,
-    thumbnailUrl: `/api/assets/${asset.assetId}/thumbnail`,
+    previewUrl: asset.previewPath ? `/api/assets/${asset.assetId}/preview` : '',
+    thumbnailUrl: asset.thumbnailPath ? `/api/assets/${asset.assetId}/thumbnail` : '',
   }));
 }
 

@@ -340,23 +340,44 @@ function appendPhotoCards(assets) {
 
     const link = document.createElement('a');
     link.className = 'photo-card';
-    link.href = asset.previewUrl;
+    link.href = asset.previewUrl || '#';
     link.dataset.assetId = asset.assetId;
-    link.addEventListener('click', (event) => {
-      event.preventDefault();
-      openPhotoLightbox(asset);
-    });
-    link.innerHTML = `
-      <img class="photo-card-image" src="${asset.thumbnailUrl || asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
-    `;
-    const image = link.querySelector('.photo-card-image');
-    if (image && asset.previewUrl && asset.thumbnailUrl && asset.thumbnailUrl !== asset.previewUrl) {
-      image.addEventListener('error', () => {
-        if (image.dataset.fallbackApplied === 'true') return;
-        image.dataset.fallbackApplied = 'true';
-        image.src = asset.previewUrl;
-      }, { once: true });
+    if (asset.previewUrl) {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        openPhotoLightbox(asset);
+      });
+    } else {
+      link.classList.add('is-unavailable');
+      link.setAttribute('aria-disabled', 'true');
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+      });
     }
+
+    if (asset.thumbnailUrl || asset.previewUrl) {
+      link.innerHTML = `
+        <img class="photo-card-image" src="${asset.thumbnailUrl || asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
+      `;
+      const image = link.querySelector('.photo-card-image');
+      if (image && asset.previewUrl && asset.thumbnailUrl && asset.thumbnailUrl !== asset.previewUrl) {
+        image.addEventListener('error', () => {
+          if (image.dataset.fallbackApplied === 'true') return;
+          image.dataset.fallbackApplied = 'true';
+          image.src = asset.previewUrl;
+        }, { once: true });
+      }
+      if (image && !asset.thumbnailUrl && asset.previewUrl) {
+        image.addEventListener('error', () => {
+          link.classList.add('is-unavailable');
+          link.innerHTML = `<div class="photo-card-fallback">${asset.originalFileName || '미리보기 없음'}</div>`;
+        }, { once: true });
+      }
+    } else {
+      link.classList.add('is-unavailable');
+      link.innerHTML = `<div class="photo-card-fallback">${asset.originalFileName || '미리보기 없음'}</div>`;
+    }
+
     activePhotoSectionGrid.appendChild(link);
   });
   photoPanelList.appendChild(fragment);
