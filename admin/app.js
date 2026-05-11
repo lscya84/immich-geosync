@@ -391,7 +391,7 @@ async function loadMoreClusterPhotos() {
     activePhotoAssets.push(...assets);
     appendPhotoCards(assets);
     activePhotoOffset += assets.length;
-    activePhotoHasMore = assets.length === photoPageSize;
+    activePhotoHasMore = typeof result.hasMore === 'boolean' ? result.hasMore : assets.length === photoPageSize;
     if (photoPanelStatus) {
       photoPanelStatus.textContent = activePhotoHasMore ? '아래로 스크롤하면 더 과거 사진을 불러옵니다.' : '마지막 사진까지 표시했습니다.';
     }

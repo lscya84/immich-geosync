@@ -275,6 +275,14 @@ function withAssetUrls(assets = []) {
   }));
 }
 
+function paginateAssets(assets = [], limit = 12) {
+  const pageLimit = Math.max(1, Math.min(30, Number(limit) || 12));
+  return {
+    assets: withAssetUrls(assets.slice(0, pageLimit)),
+    hasMore: assets.length > pageLimit,
+  };
+}
+
 app.get('/api/clusters/assets', async (req, res) => {
   const ruleId = String(req.query.ruleId || '').trim();
   const latitude = Number(req.query.latitude);
@@ -288,10 +296,11 @@ app.get('/api/clusters/assets', async (req, res) => {
   }
 
   try {
+    const pageLimit = Math.max(1, Math.min(30, Number(limit) || 12));
     const assets = ruleId
-      ? await getRuleClusterAssets(ruleId, limit, offset)
-      : await getClusterAssets(latitude, longitude, limit, precision, offset);
-    res.json({ assets: withAssetUrls(assets) });
+      ? await getRuleClusterAssets(ruleId, pageLimit + 1, offset)
+      : await getClusterAssets(latitude, longitude, pageLimit + 1, precision, offset);
+    res.json(paginateAssets(assets, pageLimit));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -307,8 +316,9 @@ app.post('/api/clusters/assets/merge', async (req, res) => {
   }
 
   try {
-    const assets = await getMergedClusterAssets(sources, limit, offset);
-    res.json({ assets: withAssetUrls(assets) });
+    const pageLimit = Math.max(1, Math.min(30, Number(limit) || 12));
+    const assets = await getMergedClusterAssets(sources, pageLimit + 1, offset);
+    res.json(paginateAssets(assets, pageLimit));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
