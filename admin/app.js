@@ -742,14 +742,6 @@ function closeRuleInfoWindow() {
 function bindRuleInfoWindowActions(rule) {
   const root = document.querySelector(`.rule-popup[data-rule-id="${rule.id}"]`);
   if (!root) return;
-  root.querySelector('[data-action="preview"]')?.addEventListener('click', async () => {
-    closeRuleInfoWindow();
-    await previewRuleById(rule.id);
-  }, { once: true });
-  root.querySelector('[data-action="apply"]')?.addEventListener('click', async () => {
-    closeRuleInfoWindow();
-    await applyRuleById(rule.id);
-  }, { once: true });
   root.querySelector('[data-action="edit"]')?.addEventListener('click', () => {
     closeRuleInfoWindow();
     startEditingRule(rule.id);
@@ -777,8 +769,6 @@ function openRuleInfoWindow(rule, position) {
       <div>사진 ${currentRule.assetCount != null ? currentRule.assetCount : '계산 중'}${currentRule.assetCount != null ? '장' : ''}</div>
       <div>${currentRule.state || ''} ${currentRule.city || ''}</div>
       <div class="popup-actions">
-        <button type="button" data-action="preview">preview</button>
-        <button type="button" data-action="apply">apply</button>
         <button type="button" data-action="edit">edit</button>
         <button type="button" data-action="delete">delete</button>
       </div>
@@ -834,22 +824,11 @@ function renderRuleList(rules) {
       <div>${rule.state || ''} ${rule.city || ''}</div>
       <div class="rule-meta">priority ${rule.priority} · override ${rule.applyAsOverride ? 'on' : 'off'} · single ${rule.treatAsSingleCluster ? 'on' : 'off'}</div>
       <div class="rule-actions">
-        <button type="button" data-action="preview">preview</button>
-        <button type="button" data-action="apply">apply</button>
         <button type="button" data-action="edit">edit</button>
         <button type="button" data-action="delete">delete</button>
       </div>
     `;
     list.appendChild(item);
-
-    item.querySelector('[data-action="preview"]').addEventListener('click', async () => {
-      await previewRuleById(rule.id);
-    });
-
-    item.querySelector('[data-action="apply"]').addEventListener('click', async () => {
-      if (!confirm(`rule \"${rule.name}\" 를 즉시 적용할까요?`)) return;
-      await applyRuleById(rule.id);
-    });
 
     item.querySelector('[data-action="edit"]').addEventListener('click', () => {
       startEditingRule(rule.id);
