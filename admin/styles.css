@@ -522,9 +522,27 @@ button:disabled {
 
 .rule-item-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
+}
+
+.rule-item-title-wrap {
+  min-width: 0;
+  flex: 1;
+}
+
+.rule-item-top-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.rule-location {
+  margin-top: 4px;
+  color: #6b7280;
+  font-size: 12px;
 }
 
 .rule-count {
@@ -545,13 +563,30 @@ button:disabled {
 
 .rule-actions {
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  align-items: center;
+  gap: 4px;
 }
 
-.rule-actions button {
-  width: auto;
-  flex: 1;
+.rule-icon-button {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #111827;
+  border: 1px solid #e5e7eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.rule-icon-button:hover {
+  background: #e5e7eb;
 }
 
 .popup-actions {

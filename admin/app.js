@@ -818,14 +818,17 @@ function renderRuleList(rules) {
     item.className = 'rule-item';
     item.innerHTML = `
       <div class="rule-item-top">
-        <strong>${rule.name}</strong>
-        <span class="rule-count">${rule.assetCount != null ? `${rule.assetCount}장` : '…'}</span>
-      </div>
-      <div>${rule.state || ''} ${rule.city || ''}</div>
-      <div class="rule-meta">priority ${rule.priority} · override ${rule.applyAsOverride ? 'on' : 'off'} · single ${rule.treatAsSingleCluster ? 'on' : 'off'}</div>
-      <div class="rule-actions">
-        <button type="button" data-action="edit">edit</button>
-        <button type="button" data-action="delete">delete</button>
+        <div class="rule-item-title-wrap">
+          <strong>${rule.name}</strong>
+          <div class="rule-location">${rule.state || ''} ${rule.city || ''}</div>
+        </div>
+        <div class="rule-item-top-right">
+          <span class="rule-count">${rule.assetCount != null ? `${rule.assetCount}장` : '…'}</span>
+          <div class="rule-actions">
+            <button type="button" class="rule-icon-button" data-action="edit" aria-label="규칙 수정" title="규칙 수정">✎</button>
+            <button type="button" class="rule-icon-button" data-action="delete" aria-label="규칙 삭제" title="규칙 삭제">✕</button>
+          </div>
+        </div>
       </div>
     `;
     list.appendChild(item);
