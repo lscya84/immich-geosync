@@ -95,7 +95,7 @@ async function fetchNaverStaticTile({ z, x, y, maptype }) {
 
   const zoom = Math.max(0, Math.min(naverStaticMapMaxZoom, Number(z) || 0));
   const { lon, lat } = getTileCenter(zoom, Number(x), Number(y));
-  const url = new URL('https://naveropenapi.apigw.ntruss.com/map-static/v2/raster');
+  const url = new URL('https://maps.apigw.ntruss.com/map-static/v2/raster');
   url.searchParams.set('w', '256');
   url.searchParams.set('h', '256');
   url.searchParams.set('center', `${lon},${lat}`);
