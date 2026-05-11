@@ -21,6 +21,13 @@ const editorSectionTitle = document.getElementById('editor-section-title');
 const editorModeHint = document.getElementById('editor-mode-hint');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
+const mapStage = document.querySelector('.map-stage');
+const photoPanel = document.getElementById('photo-panel');
+const photoPanelTitle = document.getElementById('photo-panel-title');
+const photoPanelSubtitle = document.getElementById('photo-panel-subtitle');
+const photoPanelList = document.getElementById('photo-panel-list');
+const photoPanelStatus = document.getElementById('photo-panel-status');
+const photoPanelCloseButton = document.getElementById('photo-panel-close');
 
 let drawMode = null;
 let draftPoints = [];
@@ -31,6 +38,12 @@ let editingPolygon = null;
 let editingHandles = [];
 let editingMidpoints = [];
 let editingRuleSnapshot = null;
+let activePhotoCluster = null;
+let activePhotoOffset = 0;
+let activePhotoLoading = false;
+let activePhotoHasMore = false;
+let activePhotoRequestKey = 0;
+const photoPageSize = 18;
 
 const defaultEditorHint = 'polygon은 3개 이상 점을 찍고 완료하세요. 완료(✓)를 누르면 중심점 기준으로 시/도와 도시/구/동을 자동 채웁니다. 편집 중에는 작은 점 탭으로 꼭짓점 추가, 꼭짓점 더블탭으로 삭제할 수 있습니다.';
 
@@ -86,6 +99,95 @@ function getDraftGeometry() {
 
 function setPreviewOutput(value) {
   document.getElementById('preview-output').textContent = value;
+}
+
+function formatAssetDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('ko-KR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function setPhotoPanelOpen(open) {
+  mapStage?.classList.toggle('photo-panel-open', open);
+  photoPanel?.setAttribute('aria-hidden', open ? 'false' : 'true');
+}
+
+function resetPhotoPanel() {
+  activePhotoCluster = null;
+  activePhotoOffset = 0;
+  activePhotoLoading = false;
+  activePhotoHasMore = false;
+  activePhotoRequestKey += 1;
+  if (photoPanelTitle) photoPanelTitle.textContent = '사진';
+  if (photoPanelSubtitle) photoPanelSubtitle.textContent = '';
+  if (photoPanelList) photoPanelList.innerHTML = '';
+  if (photoPanelStatus) photoPanelStatus.textContent = '마커를 선택하면 사진이 표시됩니다.';
+  setPhotoPanelOpen(false);
+}
+
+function appendPhotoCards(assets) {
+  if (!photoPanelList) return;
+  const fragment = document.createDocumentFragment();
+  assets.forEach((asset) => {
+    const link = document.createElement('a');
+    link.className = 'photo-card';
+    link.href = asset.previewUrl;
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    link.innerHTML = `
+      <img class="photo-card-image" src="${asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
+      <div class="photo-card-meta">
+        <div class="photo-card-title">${asset.originalFileName || asset.assetId}</div>
+        <div class="photo-card-date">${formatAssetDate(asset.fileCreatedAt)}</div>
+        <div class="photo-card-location">${asset.state || ''} ${asset.city || ''}</div>
+      </div>
+    `;
+    fragment.appendChild(link);
+  });
+  photoPanelList.appendChild(fragment);
+}
+
+async function loadMoreClusterPhotos() {
+  if (!activePhotoCluster || activePhotoLoading || !activePhotoHasMore) return;
+  activePhotoLoading = true;
+  const requestKey = activePhotoRequestKey;
+  if (photoPanelStatus) photoPanelStatus.textContent = '사진을 불러오는 중입니다...';
+  try {
+    const result = await fetchJson(`/api/clusters/assets?latitude=${encodeURIComponent(activePhotoCluster.latitude)}&longitude=${encodeURIComponent(activePhotoCluster.longitude)}&precision=${encodeURIComponent(activePhotoCluster.precision || 5)}&limit=${photoPageSize}&offset=${activePhotoOffset}`);
+    if (requestKey !== activePhotoRequestKey) return;
+    const assets = result.assets || [];
+    appendPhotoCards(assets);
+    activePhotoOffset += assets.length;
+    activePhotoHasMore = assets.length === photoPageSize;
+    if (photoPanelStatus) {
+      photoPanelStatus.textContent = activePhotoHasMore ? '아래로 스크롤하면 더 과거 사진을 불러옵니다.' : '마지막 사진까지 표시했습니다.';
+    }
+  } catch (error) {
+    if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
+  } finally {
+    activePhotoLoading = false;
+  }
+}
+
+async function openPhotoPanelForCluster(cluster) {
+  activePhotoCluster = cluster;
+  activePhotoOffset = 0;
+  activePhotoLoading = false;
+  activePhotoHasMore = true;
+  activePhotoRequestKey += 1;
+  if (photoPanelTitle) photoPanelTitle.textContent = `사진 ${cluster.assetCount}장`;
+  if (photoPanelSubtitle) photoPanelSubtitle.textContent = `${cluster.state || ''} ${cluster.city || ''}`.trim();
+  if (photoPanelList) photoPanelList.innerHTML = '';
+  if (photoPanelStatus) photoPanelStatus.textContent = '사진을 불러오는 중입니다...';
+  setPhotoPanelOpen(true);
+  await loadMoreClusterPhotos();
 }
 
 function getVertexIcon() {
@@ -531,7 +633,6 @@ function renderClusters(clusters) {
           html: `<div class="cluster-photo-marker cluster-photo-marker-${zoom >= 15 ? 'lg' : 'sm'}"><img src="${cluster.samplePreviewUrl}" alt="photo" loading="lazy" /></div>`,
           iconSize: zoom >= 15 ? [52, 52] : [44, 44],
           iconAnchor: zoom >= 15 ? [26, 26] : [22, 22],
-          popupAnchor: [0, -18],
         }),
       })
       : L.marker([cluster.latitude, cluster.longitude], {
@@ -540,59 +641,15 @@ function renderClusters(clusters) {
           html: `<div class="cluster-badge-marker cluster-size-${badgeSizeClass} cluster-tone-${badgeToneClass}"><span>${cluster.assetCount}</span></div>`,
           iconSize: cluster.assetCount >= 100 ? [52, 52] : cluster.assetCount >= 10 ? [46, 46] : [40, 40],
           iconAnchor: cluster.assetCount >= 100 ? [26, 26] : cluster.assetCount >= 10 ? [23, 23] : [20, 20],
-          popupAnchor: [0, -18],
         }),
       });
 
-    const canOpenPopup = cluster.assetCount <= 1 || zoom >= 15;
-    if (canOpenPopup) {
-      marker.bindPopup(`
-        <div class="cluster-popup" data-cluster-lat="${cluster.latitude}" data-cluster-lon="${cluster.longitude}">
-          <strong>사진 ${cluster.assetCount}장</strong>
-          <div>${cluster.state || ''} ${cluster.city || ''}</div>
-          <div class="cluster-popup-gallery is-loading">사진을 불러오는 중입니다...</div>
-        </div>
-      `);
-    }
-
     marker.on('click', () => {
-      if (cluster.assetCount <= 1) return;
-      const currentZoom = map.getZoom();
-      if (currentZoom < 15) {
-        map.flyTo([cluster.latitude, cluster.longitude], Math.min(15, currentZoom + 2), {
-          animate: true,
-          duration: 0.35,
-        });
-      } else if (canOpenPopup) {
-        marker.openPopup();
-      }
-    });
-
-    marker.on('popupopen', async (event) => {
-      const root = event.popup.getElement()?.querySelector('.cluster-popup');
-      const gallery = root?.querySelector('.cluster-popup-gallery');
-      if (!root || !gallery) return;
-
-      gallery.textContent = '사진을 불러오는 중입니다...';
-      gallery.classList.add('is-loading');
-
-      try {
-        const result = await fetchJson(`/api/clusters/assets?latitude=${encodeURIComponent(cluster.latitude)}&longitude=${encodeURIComponent(cluster.longitude)}&precision=${encodeURIComponent(cluster.precision || 5)}&limit=6`);
-        const assets = result.assets || [];
-        if (!assets.length) {
-          gallery.textContent = '표시할 사진이 없습니다.';
-          return;
-        }
-
-        gallery.classList.remove('is-loading');
-        gallery.innerHTML = assets.map((asset) => `
-          <a class="cluster-thumb-link" href="${asset.previewUrl}" target="_blank" rel="noreferrer" title="${asset.originalFileName || asset.assetId}">
-            <img class="cluster-thumb-image" src="${asset.previewUrl}" alt="${asset.originalFileName || asset.assetId}" loading="lazy" />
-          </a>
-        `).join('');
-      } catch (error) {
-        gallery.textContent = error.message || '사진을 불러오지 못했습니다.';
-      }
+      map.panTo([cluster.latitude, cluster.longitude], { animate: true, duration: 0.25 });
+      openPhotoPanelForCluster(cluster).catch((error) => {
+        console.error(error);
+        if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
+      });
     });
 
     marker.addTo(clusterLayer);
@@ -661,6 +718,17 @@ document.getElementById('refresh-clusters').addEventListener('click', () => load
 }));
 mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
 mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
+photoPanelCloseButton?.addEventListener('click', resetPhotoPanel);
+photoPanelList?.addEventListener('scroll', () => {
+  if (!photoPanelList || activePhotoLoading || !activePhotoHasMore) return;
+  const remaining = photoPanelList.scrollHeight - photoPanelList.scrollTop - photoPanelList.clientHeight;
+  if (remaining < 240) {
+    loadMoreClusterPhotos().catch((error) => {
+      console.error(error);
+      if (photoPanelStatus) photoPanelStatus.textContent = error.message || '사진을 불러오지 못했습니다.';
+    });
+  }
+});
 document.querySelectorAll('[data-panel-toggle]').forEach((button) => {
   button.addEventListener('click', () => toggleSection(button.dataset.panelToggle));
 });
@@ -730,6 +798,7 @@ saveApplyRuleButton.addEventListener('click', () => submitRuleForm('save-apply')
 resetRuleForm();
 updateEditorModeUi();
 setMobilePanelOpen(false);
+resetPhotoPanel();
 
 map.on('moveend', () => {
   if (clusterLoadTimer) clearTimeout(clusterLoadTimer);

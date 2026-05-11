@@ -77,7 +77,20 @@
             <button id="refresh-clusters" type="button" title="클러스터 새로고침" aria-label="클러스터 새로고침">⟳</button>
           </div>
         </div>
-        <div id="map"></div>
+        <div class="map-stage">
+          <div id="map"></div>
+          <aside id="photo-panel" class="photo-panel" aria-hidden="true">
+            <div class="photo-panel-header">
+              <div>
+                <strong id="photo-panel-title">사진</strong>
+                <div id="photo-panel-subtitle" class="muted"></div>
+              </div>
+              <button id="photo-panel-close" type="button" aria-label="사진 패널 닫기">✕</button>
+            </div>
+            <div id="photo-panel-list" class="photo-panel-list"></div>
+            <div id="photo-panel-status" class="photo-panel-status muted">마커를 선택하면 사진이 표시됩니다.</div>
+          </aside>
+        </div>
       </main>
     </div>
 

@@ -215,13 +215,14 @@ app.get('/api/clusters/assets', async (req, res) => {
   const longitude = Number(req.query.longitude);
   const limit = Number(req.query.limit || 12);
   const precision = Number(req.query.precision || 5);
+  const offset = Number(req.query.offset || 0);
 
   if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     return res.status(400).json({ error: 'latitude, longitude가 필요합니다.' });
   }
 
   try {
-    const assets = await getClusterAssets(latitude, longitude, limit, precision);
+    const assets = await getClusterAssets(latitude, longitude, limit, precision, offset);
     res.json({
       assets: assets.map((asset) => ({
         ...asset,
