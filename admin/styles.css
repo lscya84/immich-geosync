@@ -15,6 +15,7 @@ body {
   min-height: 56px;
   display: flex;
   align-items: center;
+  gap: 10px;
   padding: 0 16px;
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid #e5e7eb;
@@ -760,6 +761,31 @@ button:disabled {
 }
 
 @media (max-width: 900px) {
+  .mobile-panel-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    margin: 0;
+    padding: 0;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid #e5e7eb;
+    color: #111827;
+    font-size: 20px;
+    line-height: 1;
+    box-shadow: none;
+  }
+
+  .mobile-panel-toggle.is-active {
+    background: #111827;
+    color: #fff;
+    border-color: #111827;
+  }
+
   .layout {
     grid-template-columns: 1fr;
     height: calc(100vh - 56px);
@@ -793,22 +819,6 @@ button:disabled {
 
   body.mobile-panel-open .sidebar {
     transform: translateX(0);
-  }
-
-  .mobile-panel-toggle {
-    display: block;
-    position: fixed;
-    right: 12px;
-    bottom: 12px;
-    z-index: 1300;
-    width: auto;
-    min-width: 120px;
-    padding: 12px 16px;
-    border-radius: 999px;
-    background: #111827;
-    color: #fff;
-    border: 0;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   }
 
   .mobile-panel-backdrop {

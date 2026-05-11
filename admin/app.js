@@ -64,8 +64,11 @@ function isMobileLayout() {
 
 function setMobilePanelOpen(open) {
   document.body.classList.toggle('mobile-panel-open', open);
-  mobilePanelToggle.textContent = open ? '패널 닫기' : '패널 열기';
+  mobilePanelToggle.textContent = open ? '✕' : '☰';
   mobilePanelToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  mobilePanelToggle.setAttribute('aria-label', open ? '패널 닫기' : '패널 열기');
+  mobilePanelToggle.setAttribute('title', open ? '패널 닫기' : '패널 열기');
+  mobilePanelToggle.classList.toggle('is-active', open);
 }
 
 function setPreviewOutput(value) {
