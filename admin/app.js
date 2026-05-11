@@ -520,13 +520,26 @@ function renderRules(rules) {
 function renderClusters(clusters) {
   clusterLayer.clearLayers();
   clusters.forEach((cluster) => {
-    const marker = L.circleMarker([cluster.latitude, cluster.longitude], {
-      radius: Math.max(4, Math.min(10, 3 + Math.log2(cluster.assetCount + 1))),
-      color: '#16a34a',
-      weight: 2,
-      fillColor: '#22c55e',
-      fillOpacity: 0.55,
-    });
+    const isSingleAsset = cluster.assetCount === 1 && cluster.samplePreviewUrl;
+    const marker = isSingleAsset
+      ? L.marker([cluster.latitude, cluster.longitude], {
+        icon: L.divIcon({
+          className: 'cluster-photo-marker-wrap',
+          html: `<div class="cluster-photo-marker"><img src="${cluster.samplePreviewUrl}" alt="photo" loading="lazy" /></div>`,
+          iconSize: [44, 44],
+          iconAnchor: [22, 22],
+          popupAnchor: [0, -18],
+        }),
+      })
+      : L.marker([cluster.latitude, cluster.longitude], {
+        icon: L.divIcon({
+          className: 'cluster-badge-marker-wrap',
+          html: `<div class="cluster-badge-marker cluster-size-${cluster.assetCount >= 100 ? 'lg' : cluster.assetCount >= 10 ? 'md' : 'sm'}"><span>${cluster.assetCount}</span></div>`,
+          iconSize: [42, 42],
+          iconAnchor: [21, 21],
+          popupAnchor: [0, -18],
+        }),
+      });
 
     marker.bindPopup(`
       <div class="cluster-popup" data-cluster-lat="${cluster.latitude}" data-cluster-lon="${cluster.longitude}">
