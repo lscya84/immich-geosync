@@ -421,6 +421,18 @@ function canEditActivePhotoClusterCoordinates() {
   return Number.isFinite(Number(activePhotoCluster.latitude)) && Number.isFinite(Number(activePhotoCluster.longitude));
 }
 
+function buildCoordinatePinMarkup(sizeClass = 'coordinate-pin-icon--button') {
+  return `<span class="coordinate-pin-icon ${sizeClass}" aria-hidden="true"></span>`;
+}
+
+function createCoordinatePinMarkerIcon(size = 28) {
+  return {
+    content: `<div class="coordinate-pin-marker-wrap">${buildCoordinatePinMarkup('coordinate-pin-icon--map')}</div>`,
+    size: new naver.maps.Size(size, size),
+    anchor: new naver.maps.Point(size / 2, size - 2),
+  };
+}
+
 function startClusterCoordinateEdit() {
   if (!map || !activePhotoCluster || !canEditActivePhotoClusterCoordinates()) return;
   isEditingClusterCoordinate = true;
@@ -435,6 +447,7 @@ function startClusterCoordinateEdit() {
     position: toLatLng(createLatLngLiteral(clusterCoordinateDraft.latitude, clusterCoordinateDraft.longitude)),
     draggable: true,
     animation: naver.maps.Animation.DROP,
+    icon: createCoordinatePinMarkerIcon(),
   });
   naver.maps.Event.addListener(clusterCoordinateMarker, 'dragend', (event) => {
     clusterCoordinateDraft = {
@@ -653,7 +666,7 @@ function renderPhotoPanelSubtitle() {
     const moveButton = document.createElement('button');
     moveButton.type = 'button';
     moveButton.className = 'photo-panel-coordinate-trigger';
-    moveButton.innerHTML = '<span class="photo-panel-coordinate-pin" aria-hidden="true"></span>';
+    moveButton.innerHTML = buildCoordinatePinMarkup();
     moveButton.setAttribute('aria-label', '좌표 변경');
     moveButton.setAttribute('title', '좌표 변경');
     moveButton.addEventListener('click', () => {

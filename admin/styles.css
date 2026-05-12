@@ -303,26 +303,49 @@ body.is-drawing-polygon #map * {
   box-shadow: none;
 }
 
-.photo-panel-coordinate-pin {
+.coordinate-pin-marker-wrap {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.coordinate-pin-icon {
   position: relative;
   display: inline-block;
-  width: 14px;
-  height: 14px;
   border-radius: 999px 999px 999px 0;
   background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
   transform: rotate(-45deg);
   box-shadow: 0 2px 6px rgba(37, 99, 235, 0.28);
 }
 
-.photo-panel-coordinate-pin::after {
+.coordinate-pin-icon::after {
   content: '';
   position: absolute;
-  inset: 3px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.96);
 }
 
-.photo-panel-coordinate-trigger:hover .photo-panel-coordinate-pin {
+.coordinate-pin-icon--button {
+  width: 14px;
+  height: 14px;
+}
+
+.coordinate-pin-icon--button::after {
+  inset: 3px;
+}
+
+.coordinate-pin-icon--map {
+  width: 18px;
+  height: 18px;
+}
+
+.coordinate-pin-icon--map::after {
+  inset: 4px;
+}
+
+.photo-panel-coordinate-trigger:hover .coordinate-pin-icon {
   filter: brightness(1.04);
 }
 
