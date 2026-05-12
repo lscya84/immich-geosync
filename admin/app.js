@@ -1389,6 +1389,7 @@ function getClusterMarkerClassName(cluster) {
   const classes = ['cluster-marker'];
   if (cluster.isMergedDisplayCluster) classes.push('is-merged');
   if (cluster.ruleId || cluster.clusterType === 'single_rule') classes.push('is-rule');
+  if (cluster.clusterType === 'manual_group') classes.push('is-manual-group');
   if (cluster.assetCount === 1) classes.push('is-single');
   if (isClusterSelectedForMerge(cluster)) classes.push('is-selected');
   return classes.join(' ');
@@ -1400,8 +1401,11 @@ function buildClusterMarkerIcon(cluster) {
   const countLabel = Number(cluster.assetCount) > 10
     ? `<span class="cluster-marker-count">${cluster.assetCount > 999 ? '999+' : cluster.assetCount}</span>`
     : '';
+  const badge = cluster.clusterType === 'manual_group'
+    ? '<span class="cluster-marker-badge" aria-hidden="true">🔗</span>'
+    : '';
   return {
-    content: `<div class="${className}" style="width:${size}px;height:${size}px;"><div class="cluster-marker-inner"></div>${countLabel}</div>`,
+    content: `<div class="${className}" style="width:${size}px;height:${size}px;"><div class="cluster-marker-inner"></div>${countLabel}${badge}</div>`,
     size: new naver.maps.Size(size, size),
     anchor: new naver.maps.Point(size / 2, size / 2),
   };
