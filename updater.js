@@ -385,14 +385,16 @@ async function listEnabledClusterGroups(client) {
             "id" UUID PRIMARY KEY,
             "name" VARCHAR NOT NULL,
             "geometry" JSONB NOT NULL,
+            "sources" JSONB,
             "enabled" BOOLEAN NOT NULL DEFAULT TRUE,
             "created_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             "updated_at" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
     `);
+    await client.query('ALTER TABLE "custom_geo_cluster_groups" ADD COLUMN IF NOT EXISTS "sources" JSONB');
 
     const res = await client.query(`
-        SELECT "id", "name", "geometry", "enabled"
+        SELECT "id", "name", "geometry", "sources", "enabled"
         FROM "custom_geo_cluster_groups"
         WHERE "enabled" = TRUE
         ORDER BY "created_at" DESC
@@ -402,6 +404,7 @@ async function listEnabledClusterGroups(client) {
         id: row.id,
         name: row.name,
         geometry: row.geometry,
+        sources: Array.isArray(row.sources) ? row.sources : [],
         enabled: row.enabled,
     }));
 }

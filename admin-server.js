@@ -21,6 +21,7 @@ const {
   getMergedClusterAssets,
   updateClusterAddress,
   updateClusterCoordinates,
+  mergeCoordinateClusters,
   getAssetPreviewPath,
   getAssetThumbnailPath,
 } = require('./lib/admin-db');
@@ -362,6 +363,28 @@ app.post('/api/clusters/assets/merge', async (req, res) => {
       hasMore: page.hasMore,
     });
     res.json(page);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/clusters/merge', async (req, res) => {
+  const sources = Array.isArray(req.body?.sources) ? req.body.sources : [];
+  const name = String(req.body?.name || '').trim();
+
+  if (sources.length < 2) {
+    return res.status(400).json({ error: '최소 2개 클러스터를 선택해야 합니다.' });
+  }
+
+  try {
+    const result = await mergeCoordinateClusters({ name, sources });
+    adminDebug('api.mergeClusters', {
+      sourceCount: sources.length,
+      cacheAction: result.cacheAction,
+      deletedCacheCount: result.deletedCacheCount,
+      groupId: result.group?.id || null,
+    });
+    res.status(201).json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

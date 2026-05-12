@@ -22,6 +22,8 @@ const ruleModalHint = document.getElementById('rule-modal-hint');
 const startPolygonButton = document.getElementById('start-polygon');
 const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
+const toggleMergeClustersButton = document.getElementById('toggle-merge-clusters');
+const applyMergeClustersButton = document.getElementById('apply-merge-clusters');
 const mapWrap = document.querySelector('.map-wrap');
 const mapStage = document.querySelector('.map-stage');
 const photoPanel = document.getElementById('photo-panel');
@@ -60,6 +62,9 @@ let isEditingClusterCoordinate = false;
 let isSavingClusterCoordinate = false;
 let clusterCoordinateDraft = null;
 let clusterCoordinateMarker = null;
+let isSelectingClustersForMerge = false;
+const selectedMergeClusters = new Map();
+let lastLoadedClusters = [];
 const photoPageSize = 12;
 let ruleCountRequestSeq = 0;
 const FULL_CLUSTER_DISPLAY_ZOOM = 16;
@@ -309,6 +314,77 @@ async function movePhotoLightbox(direction) {
   openPhotoLightboxByIndex(nextIndex);
 }
 
+function getMergeSelectionClusterKey(cluster = {}) {
+  return [
+    Number(cluster.latitude).toFixed(Number(cluster.precision) || 5),
+    Number(cluster.longitude).toFixed(Number(cluster.precision) || 5),
+    Number(cluster.precision) || 5,
+  ].join(':');
+}
+
+function canSelectClusterForMerge(cluster) {
+  if (!cluster) return false;
+  if (cluster.isMergedDisplayCluster) return false;
+  if ((cluster.mergedClusterCount || 1) > 1) return false;
+  if (cluster.ruleId || cluster.clusterType === 'single_rule' || cluster.clusterType === 'manual_group') return false;
+  return Number.isFinite(Number(cluster.latitude)) && Number.isFinite(Number(cluster.longitude));
+}
+
+function isClusterSelectedForMerge(cluster) {
+  if (!canSelectClusterForMerge(cluster)) return false;
+  return selectedMergeClusters.has(getMergeSelectionClusterKey(cluster));
+}
+
+function updateMergeClusterButtons() {
+  toggleMergeClustersButton?.classList.toggle('is-active', isSelectingClustersForMerge);
+  if (toggleMergeClustersButton) {
+    toggleMergeClustersButton.title = isSelectingClustersForMerge ? '클러스터 병합 선택 종료' : '클러스터 병합 선택';
+    toggleMergeClustersButton.setAttribute('aria-label', isSelectingClustersForMerge ? '클러스터 병합 선택 종료' : '클러스터 병합 선택');
+  }
+  if (applyMergeClustersButton) {
+    applyMergeClustersButton.disabled = selectedMergeClusters.size < 2;
+    applyMergeClustersButton.title = selectedMergeClusters.size >= 2
+      ? `선택한 ${selectedMergeClusters.size}개 클러스터 병합`
+      : '선택한 클러스터 병합';
+  }
+}
+
+function refreshClusterMarkerIcons() {
+  for (const marker of clusterOverlays.values()) {
+    const cluster = marker.__cluster;
+    if (!cluster) continue;
+    marker.setIcon(buildClusterMarkerIcon(cluster));
+    marker.__signature = getClusterRenderSignature(cluster);
+  }
+}
+
+function clearSelectedMergeClusters({ preserveMode = false } = {}) {
+  selectedMergeClusters.clear();
+  if (!preserveMode) isSelectingClustersForMerge = false;
+  updateMergeClusterButtons();
+  refreshClusterMarkerIcons();
+}
+
+function toggleMergeClusterSelection(cluster) {
+  if (!canSelectClusterForMerge(cluster)) return false;
+  const key = getMergeSelectionClusterKey(cluster);
+  if (selectedMergeClusters.has(key)) {
+    selectedMergeClusters.delete(key);
+  } else {
+    selectedMergeClusters.set(key, {
+      latitude: Number(cluster.latitude),
+      longitude: Number(cluster.longitude),
+      precision: Number(cluster.precision) || 5,
+      state: cluster.state || '',
+      city: cluster.city || '',
+      assetCount: Number(cluster.assetCount) || 0,
+    });
+  }
+  updateMergeClusterButtons();
+  refreshClusterMarkerIcons();
+  return true;
+}
+
 function formatClusterLocation(cluster = {}) {
   return `${cluster.state || ''} ${cluster.city || ''}`.trim();
 }
@@ -422,6 +498,36 @@ async function saveClusterCoordinateEdit() {
     renderPhotoPanelSubtitle();
     if (photoPanelStatus) photoPanelStatus.textContent = error.message || '클러스터 좌표를 저장하지 못했습니다.';
   }
+}
+
+async function mergeSelectedClusters() {
+  if (selectedMergeClusters.size < 2) {
+    alert('병합할 최소 클러스터를 2개 이상 선택해 주세요.');
+    return;
+  }
+
+  const defaultName = `병합 클러스터 ${new Date().toLocaleString('ko-KR')}`;
+  const name = window.prompt('병합 그룹 이름', defaultName);
+  if (name == null) return;
+
+  const sources = [...selectedMergeClusters.values()];
+  if (photoPanelStatus) photoPanelStatus.textContent = `선택한 ${sources.length}개 클러스터를 병합하는 중입니다...`;
+
+  const result = await fetchJson('/api/clusters/merge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, sources }),
+  });
+
+  clearSelectedMergeClusters();
+  resetPhotoPanel();
+  await refreshClustersNow();
+  if (photoPanelStatus) {
+    photoPanelStatus.textContent = result.cacheAction === 'seeded'
+      ? `클러스터 ${result.mergedSourceCount || sources.length}개를 병합했고 캐시도 이어받았습니다.`
+      : `클러스터 ${result.mergedSourceCount || sources.length}개를 병합했고 캐시는 재계산되도록 정리했습니다.`;
+  }
+  alert(`병합 완료: ${result.group?.name || name}`);
 }
 
 function parseClusterLocationInput(value) {
@@ -1217,19 +1323,29 @@ function getDisplayClusterGridSize(zoom) {
 }
 
 function buildDisplayClusters(clusters) {
+  const manualGroups = [];
+  const regularClusters = [];
+  (clusters || []).forEach((cluster) => {
+    if (cluster?.clusterType === 'manual_group') manualGroups.push(cluster);
+    else regularClusters.push(cluster);
+  });
+
   const zoom = map?.getZoom?.() || 7;
   const gridSize = getDisplayClusterGridSize(zoom);
   if (!gridSize) {
-    return clusters.map((cluster) => ({
-      ...cluster,
-      sourceClusters: [cluster],
-      mergedClusterCount: 1,
-      isMergedDisplayCluster: false,
-    }));
+    return [
+      ...manualGroups,
+      ...regularClusters.map((cluster) => ({
+        ...cluster,
+        sourceClusters: [cluster],
+        mergedClusterCount: 1,
+        isMergedDisplayCluster: false,
+      })),
+    ];
   }
 
   const grouped = new Map();
-  clusters.forEach((cluster) => {
+  regularClusters.forEach((cluster) => {
     const latKey = Math.floor(Number(cluster.latitude) / gridSize);
     const lngKey = Math.floor(Number(cluster.longitude) / gridSize);
     const key = `${zoom}:${latKey}:${lngKey}`;
@@ -1250,20 +1366,23 @@ function buildDisplayClusters(clusters) {
     bucket.sourceClusters.push(cluster);
   });
 
-  return [...grouped.values()].map((bucket) => {
-    const primary = bucket.sourceClusters[0];
-    const mergedClusterCount = bucket.sourceClusters.length;
-    return {
-      ...primary,
-      clusterKey: bucket.bucketKey,
-      latitude: bucket.latitudeSum / bucket.assetCount,
-      longitude: bucket.longitudeSum / bucket.assetCount,
-      assetCount: bucket.assetCount,
-      sourceClusters: bucket.sourceClusters,
-      mergedClusterCount,
-      isMergedDisplayCluster: mergedClusterCount > 1,
-    };
-  });
+  return [
+    ...manualGroups,
+    ...[...grouped.values()].map((bucket) => {
+      const primary = bucket.sourceClusters[0];
+      const mergedClusterCount = bucket.sourceClusters.length;
+      return {
+        ...primary,
+        clusterKey: bucket.bucketKey,
+        latitude: bucket.latitudeSum / bucket.assetCount,
+        longitude: bucket.longitudeSum / bucket.assetCount,
+        assetCount: bucket.assetCount,
+        sourceClusters: bucket.sourceClusters,
+        mergedClusterCount,
+        isMergedDisplayCluster: mergedClusterCount > 1,
+      };
+    }),
+  ];
 }
 
 function getClusterMarkerClassName(cluster) {
@@ -1271,6 +1390,7 @@ function getClusterMarkerClassName(cluster) {
   if (cluster.isMergedDisplayCluster) classes.push('is-merged');
   if (cluster.ruleId || cluster.clusterType === 'single_rule') classes.push('is-rule');
   if (cluster.assetCount === 1) classes.push('is-single');
+  if (isClusterSelectedForMerge(cluster)) classes.push('is-selected');
   return classes.join(' ');
 }
 
@@ -1294,6 +1414,8 @@ function getClusterRenderSignature(cluster) {
     cluster.assetCount,
     cluster.clusterType || '',
     cluster.ruleId || '',
+    cluster.groupId || '',
+    isClusterSelectedForMerge(cluster) ? 'selected' : '',
   ].join('|');
 }
 
@@ -1308,6 +1430,12 @@ function createClusterMarker(cluster) {
   naver.maps.Event.addListener(marker, 'click', () => {
     if (drawMode === 'polygon') return;
     const activeCluster = marker.__cluster || cluster;
+    if (isSelectingClustersForMerge) {
+      if (!toggleMergeClusterSelection(activeCluster) && photoPanelStatus) {
+        photoPanelStatus.textContent = '최소 좌표 클러스터만 병합 대상으로 선택할 수 있습니다.';
+      }
+      return;
+    }
     const target = toLatLng(createLatLngLiteral(activeCluster.latitude, activeCluster.longitude));
     map.panTo(target);
     openPhotoPanelForCluster(activeCluster).catch((error) => {
@@ -1337,6 +1465,7 @@ function refreshClustersNow() {
 }
 
 function renderClusters(clusters) {
+  lastLoadedClusters = Array.isArray(clusters) ? clusters : [];
   const displayClusters = buildDisplayClusters(clusters);
   const nextKeys = new Set();
 
@@ -1534,6 +1663,28 @@ function bindUiEvents() {
   document.getElementById('refresh-clusters').addEventListener('click', () => refreshClustersNow().catch((error) => {
     console.error(error);
   }));
+  toggleMergeClustersButton?.addEventListener('click', () => {
+    const next = !isSelectingClustersForMerge;
+    if (next) {
+      cancelPolygonOrEditMode();
+      resetPhotoPanel();
+      isSelectingClustersForMerge = true;
+      selectedMergeClusters.clear();
+      updateMergeClusterButtons();
+      refreshClusterMarkerIcons();
+      if (photoPanelStatus) photoPanelStatus.textContent = '병합할 최소 좌표 클러스터를 클릭해 선택하세요.';
+      return;
+    }
+    clearSelectedMergeClusters();
+    if (photoPanelStatus) photoPanelStatus.textContent = '클러스터 병합 선택을 종료했습니다.';
+  });
+  applyMergeClustersButton?.addEventListener('click', () => {
+    mergeSelectedClusters().catch((error) => {
+      console.error(error);
+      if (photoPanelStatus) photoPanelStatus.textContent = error.message || '클러스터 병합에 실패했습니다.';
+      alert(error.message || '클러스터 병합에 실패했습니다.');
+    });
+  });
   mobilePanelToggle.addEventListener('click', () => setMobilePanelOpen(!document.body.classList.contains('mobile-panel-open')));
   mobilePanelBackdrop.addEventListener('click', () => setMobilePanelOpen(false));
   photoPanelCloseButton?.addEventListener('click', resetPhotoPanel);
@@ -1554,6 +1705,11 @@ function bindUiEvents() {
       if (isEditingClusterCoordinate) {
         stopClusterCoordinateEdit({ keepStatus: true });
         if (photoPanelStatus) photoPanelStatus.textContent = '좌표 변경을 취소했습니다.';
+        return;
+      }
+      if (isSelectingClustersForMerge) {
+        clearSelectedMergeClusters();
+        if (photoPanelStatus) photoPanelStatus.textContent = '클러스터 병합 선택을 종료했습니다.';
         return;
       }
       closePhotoLightbox();
@@ -1610,6 +1766,7 @@ async function init() {
   updateEditorModeUi();
   updateMapCursor();
   updatePolygonToolButton();
+  updateMergeClusterButtons();
   setMobilePanelOpen(false);
   resetPhotoPanel();
   bindUiEvents();
