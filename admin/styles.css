@@ -282,6 +282,27 @@ body.is-drawing-polygon #map * {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.photo-panel-coordinate-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.photo-panel-coordinate-trigger {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  margin-top: 0;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+}
+
 .photo-panel-coordinate-text {
   color: #6b7280;
   font-size: 12px;

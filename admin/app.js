@@ -646,46 +646,52 @@ function renderPhotoPanelSubtitle() {
   }
 
   const draft = getActiveClusterCoordinateDraft();
+  const coordinateRow = document.createElement('div');
+  coordinateRow.className = 'photo-panel-coordinate-row';
+
+  if (canEditCoordinates && !isEditingClusterCoordinate) {
+    const moveButton = document.createElement('button');
+    moveButton.type = 'button';
+    moveButton.className = 'photo-panel-coordinate-trigger';
+    moveButton.textContent = '📍';
+    moveButton.setAttribute('aria-label', '좌표 변경');
+    moveButton.setAttribute('title', '좌표 변경');
+    moveButton.addEventListener('click', () => {
+      startClusterCoordinateEdit();
+    });
+    coordinateRow.appendChild(moveButton);
+  }
+
   const coordinateText = document.createElement('div');
   coordinateText.className = 'photo-panel-coordinate-text';
-  coordinateText.textContent = `좌표 ${formatCoordinateValue(draft?.latitude)} , ${formatCoordinateValue(draft?.longitude)}`;
-  wrap.appendChild(coordinateText);
+  coordinateText.textContent = `${formatCoordinateValue(draft?.latitude)} , ${formatCoordinateValue(draft?.longitude)}`;
+  coordinateRow.appendChild(coordinateText);
+  wrap.appendChild(coordinateRow);
 
-  if (canEditCoordinates) {
+  if (canEditCoordinates && isEditingClusterCoordinate) {
     const actions = document.createElement('div');
     actions.className = 'photo-panel-inline-actions';
 
-    if (isEditingClusterCoordinate) {
-      const saveButton = document.createElement('button');
-      saveButton.type = 'button';
-      saveButton.className = 'photo-panel-inline-button primary';
-      saveButton.textContent = isSavingClusterCoordinate ? '저장 중...' : '좌표 저장';
-      saveButton.disabled = isSavingClusterCoordinate;
-      saveButton.addEventListener('click', () => {
-        saveClusterCoordinateEdit().catch((error) => console.error(error));
-      });
-      actions.appendChild(saveButton);
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'photo-panel-inline-button primary';
+    saveButton.textContent = isSavingClusterCoordinate ? '저장 중...' : '좌표 저장';
+    saveButton.disabled = isSavingClusterCoordinate;
+    saveButton.addEventListener('click', () => {
+      saveClusterCoordinateEdit().catch((error) => console.error(error));
+    });
+    actions.appendChild(saveButton);
 
-      const cancelButton = document.createElement('button');
-      cancelButton.type = 'button';
-      cancelButton.className = 'photo-panel-inline-button';
-      cancelButton.textContent = '취소';
-      cancelButton.disabled = isSavingClusterCoordinate;
-      cancelButton.addEventListener('click', () => {
-        stopClusterCoordinateEdit({ keepStatus: true });
-        if (photoPanelStatus) photoPanelStatus.textContent = '좌표 변경을 취소했습니다.';
-      });
-      actions.appendChild(cancelButton);
-    } else {
-      const moveButton = document.createElement('button');
-      moveButton.type = 'button';
-      moveButton.className = 'photo-panel-inline-button';
-      moveButton.textContent = '좌표 변경';
-      moveButton.addEventListener('click', () => {
-        startClusterCoordinateEdit();
-      });
-      actions.appendChild(moveButton);
-    }
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'photo-panel-inline-button';
+    cancelButton.textContent = '취소';
+    cancelButton.disabled = isSavingClusterCoordinate;
+    cancelButton.addEventListener('click', () => {
+      stopClusterCoordinateEdit({ keepStatus: true });
+      if (photoPanelStatus) photoPanelStatus.textContent = '좌표 변경을 취소했습니다.';
+    });
+    actions.appendChild(cancelButton);
 
     wrap.appendChild(actions);
   }
