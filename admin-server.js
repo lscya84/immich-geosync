@@ -20,6 +20,7 @@ const {
   getClusterAssets,
   getMergedClusterAssets,
   updateClusterAddress,
+  updateClusterCoordinates,
   getAssetPreviewPath,
   getAssetThumbnailPath,
 } = require('./lib/admin-db');
@@ -384,6 +385,31 @@ app.put('/api/clusters/location', async (req, res) => {
       city: req.body?.city,
     });
     if (!result) return res.status(404).json({ error: '클러스터 대상을 찾을 수 없습니다.' });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/clusters/coordinates', async (req, res) => {
+  if (req.body?.isMergedDisplayCluster) {
+    return res.status(400).json({ error: '합쳐진 표시 클러스터는 바로 수정할 수 없습니다.' });
+  }
+  if (Number(req.body?.mergedClusterCount || 1) > 1) {
+    return res.status(400).json({ error: '최소단위 클러스터에서만 수정할 수 있습니다.' });
+  }
+  if (req.body?.ruleId) {
+    return res.status(400).json({ error: 'single cluster rule 중심점은 여기서 직접 바꿀 수 없습니다.' });
+  }
+
+  try {
+    const result = await updateClusterCoordinates({
+      latitude: req.body?.latitude,
+      longitude: req.body?.longitude,
+      precision: req.body?.precision,
+      nextLatitude: req.body?.nextLatitude,
+      nextLongitude: req.body?.nextLongitude,
+    });
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });

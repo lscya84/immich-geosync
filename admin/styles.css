@@ -237,6 +237,12 @@ body.is-drawing-polygon #map * {
   margin-top: 2px;
 }
 
+.photo-panel-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .photo-panel-location-text {
   display: block;
   width: 100%;
@@ -274,6 +280,35 @@ body.is-drawing-polygon #map * {
   outline: none;
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.photo-panel-coordinate-text {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.photo-panel-inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.photo-panel-inline-button {
+  width: auto;
+  min-width: 0;
+  margin-top: 0;
+  padding: 7px 10px;
+  min-height: 34px;
+  font-size: 13px;
+  border-radius: 8px;
+}
+
+.photo-panel-inline-button.primary {
+  background: #111827;
+  color: #fff;
+  border-color: #111827;
 }
 
 .photo-panel-header button {

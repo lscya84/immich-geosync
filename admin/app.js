@@ -56,6 +56,10 @@ let activePhotoAssets = [];
 let activeLightboxIndex = -1;
 let isEditingPhotoLocation = false;
 let isSavingPhotoLocation = false;
+let isEditingClusterCoordinate = false;
+let isSavingClusterCoordinate = false;
+let clusterCoordinateDraft = null;
+let clusterCoordinateMarker = null;
 const photoPageSize = 12;
 let ruleCountRequestSeq = 0;
 const FULL_CLUSTER_DISPLAY_ZOOM = 16;
@@ -159,6 +163,13 @@ function latLngToLiteral(latLng) {
 
 function clearOverlay(overlay) {
   if (overlay) overlay.setMap(null);
+}
+
+function clearClusterCoordinateMarker() {
+  if (clusterCoordinateMarker) {
+    clusterCoordinateMarker.setMap(null);
+    clusterCoordinateMarker = null;
+  }
 }
 
 function clearOverlayList(list) {
@@ -302,11 +313,115 @@ function formatClusterLocation(cluster = {}) {
   return `${cluster.state || ''} ${cluster.city || ''}`.trim();
 }
 
+function formatCoordinateValue(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '-';
+  return number.toFixed(6);
+}
+
+function getActiveClusterCoordinateDraft() {
+  if (clusterCoordinateDraft && Number.isFinite(clusterCoordinateDraft.latitude) && Number.isFinite(clusterCoordinateDraft.longitude)) {
+    return clusterCoordinateDraft;
+  }
+  if (!activePhotoCluster) return null;
+  return {
+    latitude: Number(activePhotoCluster.latitude),
+    longitude: Number(activePhotoCluster.longitude),
+  };
+}
+
 function canEditActivePhotoClusterLocation() {
   if (!activePhotoCluster) return false;
   if (activePhotoCluster.isMergedDisplayCluster) return false;
   if ((activePhotoCluster.mergedClusterCount || 1) > 1) return false;
   return true;
+}
+
+function canEditActivePhotoClusterCoordinates() {
+  if (!activePhotoCluster) return false;
+  if (activePhotoCluster.isMergedDisplayCluster) return false;
+  if ((activePhotoCluster.mergedClusterCount || 1) > 1) return false;
+  if (activePhotoCluster.ruleId || activePhotoCluster.clusterType === 'single_rule') return false;
+  return Number.isFinite(Number(activePhotoCluster.latitude)) && Number.isFinite(Number(activePhotoCluster.longitude));
+}
+
+function startClusterCoordinateEdit() {
+  if (!map || !activePhotoCluster || !canEditActivePhotoClusterCoordinates()) return;
+  isEditingClusterCoordinate = true;
+  isSavingClusterCoordinate = false;
+  clusterCoordinateDraft = {
+    latitude: Number(activePhotoCluster.latitude),
+    longitude: Number(activePhotoCluster.longitude),
+  };
+  clearClusterCoordinateMarker();
+  clusterCoordinateMarker = new naver.maps.Marker({
+    map,
+    position: toLatLng(createLatLngLiteral(clusterCoordinateDraft.latitude, clusterCoordinateDraft.longitude)),
+    draggable: true,
+    animation: naver.maps.Animation.DROP,
+  });
+  naver.maps.Event.addListener(clusterCoordinateMarker, 'dragend', (event) => {
+    clusterCoordinateDraft = {
+      latitude: Number(event.coord.y),
+      longitude: Number(event.coord.x),
+    };
+    renderPhotoPanelSubtitle();
+  });
+  map.panTo(toLatLng(createLatLngLiteral(clusterCoordinateDraft.latitude, clusterCoordinateDraft.longitude)));
+  renderPhotoPanelSubtitle();
+  if (photoPanelStatus) photoPanelStatus.textContent = '핀을 드래그한 뒤 저장을 누르면 이 최소 클러스터의 좌표를 바꿉니다.';
+}
+
+function stopClusterCoordinateEdit({ keepStatus = true } = {}) {
+  isEditingClusterCoordinate = false;
+  isSavingClusterCoordinate = false;
+  clusterCoordinateDraft = null;
+  clearClusterCoordinateMarker();
+  renderPhotoPanelSubtitle();
+  if (!keepStatus && photoPanelStatus) photoPanelStatus.textContent = '마커를 선택하면 사진이 표시됩니다.';
+}
+
+async function saveClusterCoordinateEdit() {
+  if (!activePhotoCluster || !canEditActivePhotoClusterCoordinates()) return;
+  const draft = getActiveClusterCoordinateDraft();
+  if (!draft) return;
+
+  isSavingClusterCoordinate = true;
+  renderPhotoPanelSubtitle();
+  if (photoPanelStatus) photoPanelStatus.textContent = '클러스터 좌표를 저장하는 중입니다...';
+
+  try {
+    const result = await fetchJson('/api/clusters/coordinates', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        latitude: activePhotoCluster.latitude,
+        longitude: activePhotoCluster.longitude,
+        precision: activePhotoCluster.precision || 5,
+        isMergedDisplayCluster: activePhotoCluster.isMergedDisplayCluster === true,
+        mergedClusterCount: activePhotoCluster.mergedClusterCount || 1,
+        ruleId: activePhotoCluster.ruleId || '',
+        nextLatitude: draft.latitude,
+        nextLongitude: draft.longitude,
+      }),
+    });
+
+    const reopenedCluster = {
+      ...activePhotoCluster,
+      latitude: result.latitude,
+      longitude: result.longitude,
+      precision: result.precision || activePhotoCluster.precision || 5,
+    };
+
+    stopClusterCoordinateEdit();
+    await openPhotoPanelForCluster(reopenedCluster);
+    if (photoPanelStatus) photoPanelStatus.textContent = `${result.updatedCount || 0}개 사진의 좌표를 변경했습니다.`;
+    refreshClustersNow().catch((error) => console.error(error));
+  } catch (error) {
+    isSavingClusterCoordinate = false;
+    renderPhotoPanelSubtitle();
+    if (photoPanelStatus) photoPanelStatus.textContent = error.message || '클러스터 좌표를 저장하지 못했습니다.';
+  }
 }
 
 function parseClusterLocationInput(value) {
@@ -335,6 +450,9 @@ function renderPhotoPanelSubtitle() {
   }
 
   const canEditLocation = canEditActivePhotoClusterLocation();
+  const canEditCoordinates = canEditActivePhotoClusterCoordinates();
+  const wrap = document.createElement('div');
+  wrap.className = 'photo-panel-meta';
 
   if (isEditingPhotoLocation && canEditLocation) {
     const input = document.createElement('input');
@@ -343,7 +461,7 @@ function renderPhotoPanelSubtitle() {
     input.value = formatClusterLocation(activePhotoCluster);
     input.placeholder = '예: 강원특별자치도 속초시';
     input.disabled = isSavingPhotoLocation;
-    photoPanelSubtitle.appendChild(input);
+    wrap.appendChild(input);
     input.focus();
     input.select();
 
@@ -398,29 +516,75 @@ function renderPhotoPanelSubtitle() {
       isEditingPhotoLocation = false;
       renderPhotoPanelSubtitle();
     }, { once: true });
-    return;
+  } else {
+    const text = document.createElement('div');
+    text.className = canEditLocation ? 'photo-panel-location-text is-editable' : 'photo-panel-location-text';
+    text.textContent = formatClusterLocation(activePhotoCluster) || '위치 정보 없음';
+
+    if (canEditLocation) {
+      text.setAttribute('role', 'button');
+      text.setAttribute('tabindex', '0');
+      text.addEventListener('click', () => {
+        isEditingPhotoLocation = true;
+        renderPhotoPanelSubtitle();
+      });
+      text.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        isEditingPhotoLocation = true;
+        renderPhotoPanelSubtitle();
+      });
+    }
+
+    wrap.appendChild(text);
   }
 
-  const text = document.createElement('div');
-  text.className = canEditLocation ? 'photo-panel-location-text is-editable' : 'photo-panel-location-text';
-  text.textContent = formatClusterLocation(activePhotoCluster) || '위치 정보 없음';
+  const draft = getActiveClusterCoordinateDraft();
+  const coordinateText = document.createElement('div');
+  coordinateText.className = 'photo-panel-coordinate-text';
+  coordinateText.textContent = `좌표 ${formatCoordinateValue(draft?.latitude)} , ${formatCoordinateValue(draft?.longitude)}`;
+  wrap.appendChild(coordinateText);
 
-  if (canEditLocation) {
-    text.setAttribute('role', 'button');
-    text.setAttribute('tabindex', '0');
-    text.addEventListener('click', () => {
-      isEditingPhotoLocation = true;
-      renderPhotoPanelSubtitle();
-    });
-    text.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      isEditingPhotoLocation = true;
-      renderPhotoPanelSubtitle();
-    });
+  if (canEditCoordinates) {
+    const actions = document.createElement('div');
+    actions.className = 'photo-panel-inline-actions';
+
+    if (isEditingClusterCoordinate) {
+      const saveButton = document.createElement('button');
+      saveButton.type = 'button';
+      saveButton.className = 'photo-panel-inline-button primary';
+      saveButton.textContent = isSavingClusterCoordinate ? '저장 중...' : '좌표 저장';
+      saveButton.disabled = isSavingClusterCoordinate;
+      saveButton.addEventListener('click', () => {
+        saveClusterCoordinateEdit().catch((error) => console.error(error));
+      });
+      actions.appendChild(saveButton);
+
+      const cancelButton = document.createElement('button');
+      cancelButton.type = 'button';
+      cancelButton.className = 'photo-panel-inline-button';
+      cancelButton.textContent = '취소';
+      cancelButton.disabled = isSavingClusterCoordinate;
+      cancelButton.addEventListener('click', () => {
+        stopClusterCoordinateEdit({ keepStatus: true });
+        if (photoPanelStatus) photoPanelStatus.textContent = '좌표 변경을 취소했습니다.';
+      });
+      actions.appendChild(cancelButton);
+    } else {
+      const moveButton = document.createElement('button');
+      moveButton.type = 'button';
+      moveButton.className = 'photo-panel-inline-button';
+      moveButton.textContent = '좌표 변경';
+      moveButton.addEventListener('click', () => {
+        startClusterCoordinateEdit();
+      });
+      actions.appendChild(moveButton);
+    }
+
+    wrap.appendChild(actions);
   }
 
-  photoPanelSubtitle.appendChild(text);
+  photoPanelSubtitle.appendChild(wrap);
 }
 
 function resetPhotoPanel() {
@@ -435,6 +599,10 @@ function resetPhotoPanel() {
   activeLightboxIndex = -1;
   isEditingPhotoLocation = false;
   isSavingPhotoLocation = false;
+  isEditingClusterCoordinate = false;
+  isSavingClusterCoordinate = false;
+  clusterCoordinateDraft = null;
+  clearClusterCoordinateMarker();
   clearOverlay(selectedPhotoMarker);
   selectedPhotoMarker = null;
   if (photoPanelTitle) photoPanelTitle.textContent = '사진';
@@ -577,9 +745,13 @@ async function openPhotoPanelForCluster(cluster) {
   activeLightboxIndex = -1;
   clearOverlay(selectedPhotoMarker);
   selectedPhotoMarker = null;
+  clearClusterCoordinateMarker();
   photoPanelList?.classList.add('is-swapping');
   isEditingPhotoLocation = false;
   isSavingPhotoLocation = false;
+  isEditingClusterCoordinate = false;
+  isSavingClusterCoordinate = false;
+  clusterCoordinateDraft = null;
   if (photoPanelTitle) photoPanelTitle.textContent = `사진 ${cluster.assetCount}장`;
   renderPhotoPanelSubtitle();
   if (photoPanelList) {
@@ -1377,6 +1549,11 @@ function bindUiEvents() {
     if (event.key === 'Escape') {
       if (ruleModal?.classList.contains('is-open')) {
         closeRuleModal();
+        return;
+      }
+      if (isEditingClusterCoordinate) {
+        stopClusterCoordinateEdit({ keepStatus: true });
+        if (photoPanelStatus) photoPanelStatus.textContent = '좌표 변경을 취소했습니다.';
         return;
       }
       closePhotoLightbox();
