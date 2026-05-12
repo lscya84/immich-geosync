@@ -653,7 +653,7 @@ function renderPhotoPanelSubtitle() {
     const moveButton = document.createElement('button');
     moveButton.type = 'button';
     moveButton.className = 'photo-panel-coordinate-trigger';
-    moveButton.textContent = '📍';
+    moveButton.innerHTML = '<span class="photo-panel-coordinate-pin" aria-hidden="true"></span>';
     moveButton.setAttribute('aria-label', '좌표 변경');
     moveButton.setAttribute('title', '좌표 변경');
     moveButton.addEventListener('click', () => {
