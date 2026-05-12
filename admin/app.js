@@ -903,6 +903,9 @@ function closeRuleInfoWindow() {
 function bindRuleInfoWindowActions(rule) {
   const root = document.querySelector(`.rule-popup[data-rule-id="${rule.id}"]`);
   if (!root) return;
+  root.querySelector('[data-action="close"]')?.addEventListener('click', () => {
+    closeRuleInfoWindow();
+  }, { once: true });
   root.querySelector('[data-action="edit"]')?.addEventListener('click', () => {
     closeRuleInfoWindow();
     startEditingRule(rule.id);
@@ -926,12 +929,15 @@ function openRuleInfoWindow(rule, position) {
 
   const content = `
     <div class="rule-popup" data-rule-id="${currentRule.id}">
-      <strong>${currentRule.name}</strong>
+      <div class="rule-popup-header">
+        <strong>${currentRule.name}</strong>
+        <button type="button" class="popup-icon-button popup-close-button" data-action="close" aria-label="닫기" title="닫기">✕</button>
+      </div>
       <div>사진 ${currentRule.assetCount != null ? currentRule.assetCount : '계산 중'}${currentRule.assetCount != null ? '장' : ''}</div>
       <div>${currentRule.state || ''} ${currentRule.city || ''}</div>
       <div class="popup-actions">
-        <button type="button" data-action="edit">edit</button>
-        <button type="button" data-action="delete">delete</button>
+        <button type="button" class="popup-icon-button" data-action="edit" aria-label="수정" title="수정">✎</button>
+        <button type="button" class="popup-icon-button" data-action="delete" aria-label="삭제" title="삭제">🗑</button>
       </div>
     </div>
   `;
