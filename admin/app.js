@@ -42,6 +42,9 @@ const photoLightboxTitle = document.getElementById('photo-lightbox-title');
 const photoLightboxDate = document.getElementById('photo-lightbox-date');
 const previewOutput = document.getElementById('preview-output');
 const refreshWorkerButton = document.getElementById('refresh-worker');
+const autoRefreshWorkerButton = document.getElementById('auto-refresh-worker');
+const copyWorkerLogsButton = document.getElementById('copy-worker-logs');
+const downloadWorkerLogsButton = document.getElementById('download-worker-logs');
 const workerStatus = document.getElementById('worker-status');
 const workerRuns = document.getElementById('worker-runs');
 const workerLogs = document.getElementById('worker-logs');
@@ -69,6 +72,9 @@ let isEditingPhotoLocation = false;
 let isSavingPhotoLocation = false;
 let isEditingClusterCoordinate = false;
 let isSavingClusterCoordinate = false;
+let workerAutoRefreshTimer = null;
+let workerAutoRefreshEnabled = false;
+let latestWorkerLogText = '';
 let clusterCoordinateDraft = null;
 let clusterCoordinateMarker = null;
 let isSelectingClustersForMerge = false;
@@ -1592,6 +1598,53 @@ async function fetchJson(url, options) {
   return data;
 }
 
+function scrollWorkerLogsToLatest() {
+  if (!workerLogs) return;
+  workerLogs.scrollTop = workerLogs.scrollHeight;
+}
+
+function setWorkerAutoRefresh(enabled) {
+  workerAutoRefreshEnabled = enabled;
+  if (workerAutoRefreshTimer) {
+    clearInterval(workerAutoRefreshTimer);
+    workerAutoRefreshTimer = null;
+  }
+  if (autoRefreshWorkerButton) {
+    autoRefreshWorkerButton.classList.toggle('is-active', enabled);
+    autoRefreshWorkerButton.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    autoRefreshWorkerButton.textContent = enabled ? '자동 새로고침 켜짐' : '자동 새로고침';
+  }
+  if (!enabled) return;
+  workerAutoRefreshTimer = setInterval(() => {
+    loadWorkerSnapshot({ showLoading: false }).catch((error) => {
+      console.error(error);
+      setWorkerAutoRefresh(false);
+      if (workerStatus) workerStatus.textContent = error.message || '워커 상태를 불러오지 못했습니다.';
+    });
+  }, 10000);
+}
+
+async function copyWorkerLogs() {
+  const text = latestWorkerLogText || workerLogs?.textContent || '';
+  if (!text.trim()) return;
+  await navigator.clipboard.writeText(text);
+}
+
+function downloadWorkerLogs() {
+  const text = latestWorkerLogText || workerLogs?.textContent || '';
+  if (!text.trim()) return;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const blob = new Blob([`${text}\n`], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `immich-geosync-worker-${stamp}.log`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function renderWorkerSnapshot(snapshot) {
   if (workerStatus) {
     workerStatus.innerHTML = '';
@@ -1617,14 +1670,16 @@ function renderWorkerSnapshot(snapshot) {
   }
 
   if (workerLogs) {
-    workerLogs.textContent = (snapshot.logs || [])
+    latestWorkerLogText = (snapshot.logs || [])
       .map((log) => `[${formatShortDateTime(log.createdAt)}] ${String(log.level || 'info').toUpperCase()} ${log.message}`)
       .join('\n') || '아직 저장된 워커 로그가 없습니다.';
+    workerLogs.textContent = latestWorkerLogText;
+    requestAnimationFrame(scrollWorkerLogsToLatest);
   }
 }
 
-async function loadWorkerSnapshot() {
-  if (workerStatus) workerStatus.textContent = '워커 상태를 불러오는 중입니다.';
+async function loadWorkerSnapshot({ showLoading = true } = {}) {
+  if (showLoading && workerStatus) workerStatus.textContent = '워커 상태를 불러오는 중입니다.';
   renderWorkerSnapshot(await fetchJson('/api/admin/worker?logLimit=160'));
 }
 
@@ -1851,6 +1906,14 @@ function bindUiEvents() {
     console.error(error);
     if (workerStatus) workerStatus.textContent = error.message || '워커 상태를 불러오지 못했습니다.';
   }));
+  autoRefreshWorkerButton?.addEventListener('click', () => {
+    setWorkerAutoRefresh(!workerAutoRefreshEnabled);
+  });
+  copyWorkerLogsButton?.addEventListener('click', () => copyWorkerLogs().catch((error) => {
+    console.error(error);
+    alert(`로그 복사 실패: ${error.message}`);
+  }));
+  downloadWorkerLogsButton?.addEventListener('click', downloadWorkerLogs);
   saveSettingsButton?.addEventListener('click', () => saveSettings().catch((error) => {
     console.error(error);
     if (settingsStatus) settingsStatus.textContent = error.message || '환경 설정을 저장하지 못했습니다.';

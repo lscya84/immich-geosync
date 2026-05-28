@@ -89,6 +89,11 @@
             <section class="panel-section is-open" data-section="worker-logs">
               <div class="section-header">
                 <strong>작동 로그</strong>
+                <div class="worker-log-actions">
+                  <button id="auto-refresh-worker" type="button" aria-pressed="false">자동 새로고침</button>
+                  <button id="copy-worker-logs" type="button">복사</button>
+                  <button id="download-worker-logs" type="button">다운로드</button>
+                </div>
               </div>
               <div class="panel-section-body">
                 <pre id="worker-logs" class="worker-logs"></pre>

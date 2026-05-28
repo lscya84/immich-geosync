@@ -2,46 +2,118 @@
 
 ## 목표
 
-Immich GeoSync Admin 화면을 메뉴 기반 구조로 재구성해 클러스터 맵 에디터, 워커상태, 설정이 한 좌측 패널에 섞이지 않게 한다.
+Immich GeoSync는 Immich 사진의 좌표 기반 위치 정보를 한국어 주소로 보정하고, 반복 보정이 필요한 좌표 클러스터를 Admin UI에서 운영자가 직접 관리할 수 있게 한다.
 
 ## 요구사항
 
-- 상단 헤더와 좌측 메뉴가 중복되어 화면을 답답하게 만들지 않도록 정리한다.
-- 좌측에는 주요 메뉴만 둔다.
-- 메뉴는 `클러스터 맵 에디터`, `워커상태`, `설정`으로 구성한다.
-- 각 메뉴는 별도 화면처럼 전환된다.
-- 기존 지도 편집, 규칙 목록, 워커 로그, 환경 설정 API 기능은 유지한다.
+- worker는 Immich PostgreSQL의 사진 좌표를 읽어 `asset_exif`의 주소 정보를 보정한다.
+- admin은 클러스터 맵 에디터, 워커상태, 설정을 메뉴형 UI로 제공한다.
+- admin 설정 페이지는 운영 `.env` 파일을 수정할 수 있어야 한다.
+- worker와 admin은 같은 `.env`를 사용하되, 민감 값은 UI에서 마스킹한다.
+- 설정 저장 후 실제 런타임 적용 시점이 명확해야 한다.
+- worker 로그는 최신 로그가 보이는 위치로 자동 스크롤되고, 자동 새로고침/복사/다운로드를 제공한다.
+- 운영 접속 주소는 `http://openclaw:3030/admin/`이다.
 
 ## 가정
 
-- GitHub repository 이름은 `immich-geosync`로 정리한다.
-- 사용자 접속 주소는 `http://openclaw:3030/admin/`이다.
-- 민감한 환경 변수 값은 기존처럼 마스킹하고, 빈 값 저장 시 기존 값을 유지한다.
+- GitHub repository 이름은 `immich-geosync`다.
+- 운영 배포 경로는 `/docker/immich/immich-geosync`다.
+- Immich compose 루트의 `.env`를 worker와 admin이 공유한다.
+- DB 보조 테이블명은 기존 `custom_geo_*` 계열을 유지한다.
+- Secret 값은 빈 값으로 저장하면 기존 값을 유지한다.
 
 ## Architecture
 
-- Backend: Express admin server
-- Frontend: static HTML/CSS/JavaScript
-- Database: 기존 Immich PostgreSQL 및 admin 보조 테이블
-- Runtime: Docker compose 운영 배포
+- Worker: Node.js `updater.js`
+- Admin Backend: Express `admin-server.js`
+- Admin Frontend: static HTML/CSS/JavaScript under `admin/`
+- Database: 기존 Immich PostgreSQL + GeoSync 보조 테이블
+- Runtime: Docker compose
 
-## UI 구조
+## Runtime Containers
 
-- Header: 제품명과 모바일 메뉴 버튼만 표시한다.
-- Sidebar: 화면 전환 메뉴 전용으로 사용한다.
+| Compose service | Container | Command | Role |
+|---|---|---|---|
+| `immich-geosync-worker` | `immich_geosync_worker` | `node updater.js` | 주기적 좌표 보정 worker |
+| `immich-geosync-admin` | `immich_geosync_admin` | `node admin-server.js` | Admin UI/API |
+
+## Environment File Flow
+
+운영 구조는 하나의 `.env`를 두 컨테이너가 공유한다.
+
+```text
+/docker/immich/.env
+  ├─ immich-geosync-worker -> /app/.env:ro
+  └─ immich-geosync-admin  -> /app/.env:rw
+```
+
+Admin 설정 API는 `ADMIN_ENV_PATH`의 파일을 직접 읽고 쓴다. 운영 기본값은 `/app/.env`다.
+
+## Settings Behavior
+
+설정 페이지의 저장 대상은 worker/admin 공통 `.env`다. 저장 직후 설정 페이지에는 새 값이 표시된다. 그러나 worker와 admin의 실제 런타임 설정은 프로세스 시작 시점의 `process.env`에서 읽기 때문에 관련 컨테이너를 재기동해야 반영된다.
+
+| Key | Worker | Admin |
+|---|---|---|
+| `INTERVAL_HOURS` | 재기동 후 worker 실행 주기에 적용 | worker 상태 표시는 다음 worker 실행 이후 갱신 |
+| `STEP_DELAY_MS` | 재기동 후 API 처리 지연에 적용 | 직접 영향 없음 |
+| `CLUSTER_RADIUS_METERS` | 재기동 후 클러스터링 반경에 적용 | 재기동 후 클러스터 조회/미리보기에 적용 |
+| `APPEND_BUILDING_NAME` | 재기동 후 결과 주소의 건물명 포함 여부에 적용 | 재기동 후 중심점 주소 자동 채움의 건물명 선반영 여부에 적용 |
+| `API_TIMEOUT_MS`, `NAVER_API_TIMEOUT_MS` | 재기동 후 API timeout에 적용 | 재기동 후 중심점 주소 조회 timeout에 적용 |
+| `VWORLD_API_KEY` | 재기동 후 VWorld 조회에 적용 | 재기동 후 중심점 주소 조회에 적용 |
+| `NAVER_CLIENT_ID` | 재기동 후 Naver 조회에 적용 | 재기동 후 지도 runtime config와 중심점 주소 조회에 적용 |
+| `NAVER_CLIENT_SECRET` | 재기동 후 Naver 조회에 적용 | 재기동 후 중심점 주소 조회에 적용 |
+
+운영자가 설정을 저장한 뒤에는 아래처럼 두 컨테이너를 함께 재기동하는 것을 기본 절차로 둔다.
+
+```bash
+docker compose restart immich-geosync-worker immich-geosync-admin
+```
+
+## UI Structure
+
+- Header: `Immich GeoSync Admin` 이름과 모바일 메뉴 버튼
+- Sidebar: 화면 전환 메뉴
 - Workspace:
-  - Map Editor: 규칙 목록 패널과 지도
-  - Worker Status: 워커 상태, 최근 실행, 작동 로그
-  - Settings: `.env` 기반 설정 폼
+  - 클러스터 맵 에디터: 규칙 목록, 지도, 클러스터/사진 미리보기
+  - 워커상태: 현재 상태, 최근 실행, 작동 로그
+  - 설정: `.env` 기반 설정 폼
 
-## 테스트 계획
+워커상태 화면의 작동 로그는 최신 위치로 따라가며, 10초 자동 새로고침 토글과 로그 복사/다운로드 버튼을 제공한다.
+
+## Data Model
+
+주요 보조 테이블은 다음 역할을 한다.
+
+- `custom_geo_override_rules`: polygon/point override rule
+- `custom_geo_cluster_groups`: single-cluster group
+- `custom_geo_worker_runs`: worker 실행 이력
+- `custom_geo_worker_logs`: worker 로그
+- `custom_geo_worker_state`: worker 현재 상태와 마지막 실행 설정 스냅샷
+
+테이블명은 기존 운영 데이터와 호환을 위해 `custom_geo_*` 이름을 유지한다.
+
+## Deployment
+
+- Repository: `https://github.com/lscya84/immich-geosync`
+- Docker image: `lscya84/immich-geosync`
+- Admin URL: `http://openclaw:3030/admin/`
+- Host port: `3030`
+- Container port: `3030`
+
+## Test Plan
 
 - 정적 문법 확인: `node --check admin-server.js`, `node --check admin/app.js`
-- 로컬 서버 응답 확인: `/healthz`
-- UI 파일이 정상 서빙되는지 확인한다.
-- 운영 배포 후 `http://openclaw:3030/admin/`에서 메뉴 전환과 API 응답을 확인한다.
+- Admin health check: `/healthz`
+- Admin page title: `<title>Immich GeoSync Admin</title>`
+- Settings API: `/api/admin/settings`
+- Worker API: `/api/admin/worker`
+- Worker log controls: 최신 로그 자동 스크롤, 자동 새로고침, 복사, 다운로드
+- 운영 배포 후 compose service/container 이름 확인
 
-## 배포
+## Risks / Notes
 
-- 변경 사항을 commit/push한다.
-- plex LXC의 운영 경로에서 pull 후 Docker compose로 admin/worker를 재빌드한다.
+- Admin 설정 저장은 파일 쓰기이며, 실행 중인 worker/admin process를 자동 재시작하지 않는다.
+- Admin 컨테이너의 `.env` volume이 읽기 전용이면 설정 저장이 실패한다.
+- Worker 컨테이너는 `.env`를 읽기 전용으로 마운트해도 된다.
+- Docker Hub publish는 GitHub Actions secret `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`이 필요하다.

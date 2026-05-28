@@ -1,222 +1,101 @@
-# Immich GeoSync Admin MVP Plan
+# Immich GeoSync Admin Plan
 
-## 목표
+## 현재 목표
 
-기존 역지오코딩 워커에 수동 운영 기능을 추가한다.
+Immich GeoSync Admin은 자동 역지오코딩 worker를 운영자가 직접 보정하고 관찰할 수 있는 관리 화면이다.
 
-핵심 목표는 두 가지다.
+핵심 역할은 세 가지다.
 
-1. 지도에서 현재 클러스터/캐시 상태를 확인할 수 있어야 한다.
-2. 특정 좌표 영역을 수동으로 지정해서 해당 영역 안의 사진은 항상 지정한 위치명/건물명으로 처리할 수 있어야 한다.
+1. 지도에서 현재 클러스터와 캐시/주소 상태를 확인한다.
+2. 특정 좌표 영역을 수동 규칙 또는 단일 클러스터로 저장해 반복 보정을 자동화한다.
+3. worker 상태, 로그, 주요 `.env` 설정을 Admin에서 확인하고 수정한다.
 
-## 왜 필요한가
+## 현재 구현 범위
 
-현재 시스템은 좌표 클러스터링 + API/VWorld/Naver + 캐시 기반으로 동작한다.
-이 구조는 자동화에는 좋지만, 아래 운영 요구를 직접 처리하기 어렵다.
+### 클러스터 맵 에디터
 
-- 같은 건물인데 좌표 오차로 클러스터가 나뉘는 경우
-- 단지/공항/터미널/건물 내부처럼 사람이 정한 명칭을 강제하고 싶은 경우
-- 반복적으로 같은 위치를 재보정해야 하는 경우
-- 새 사진이 들어와도 같은 영역 규칙을 자동 적용하고 싶은 경우
+- 클러스터 목록/지도 조회
+- polygon override rule 생성, 수정, 삭제
+- single-cluster group 생성, 삭제
+- rule/group 영향 범위 미리보기
+- 특정 rule/group 기준 asset_exif 재반영
+- 클러스터 중심점 주소 자동 채움
+- 샘플 썸네일/미리보기 조회
 
-따라서 단발성 클러스터 수정만이 아니라 "공간 규칙(override rule)"이 필요하다.
+### 워커상태
 
-## 추천 방향
+- 현재 worker 상태 조회
+- 최근 worker 실행 이력 조회
+- worker 작동 로그 조회
+- 최신 로그 자동 스크롤
+- 10초 자동 새로고침 토글
+- 로그 복사와 다운로드
+- worker 실행 시점의 설정 스냅샷 저장
 
-우선순위는 아래처럼 둔다.
+### 설정
+
+- `ADMIN_ENV_PATH`가 가리키는 `.env` 파일 조회/수정
+- Secret 값 마스킹 표시
+- Secret 입력칸을 비워 저장하면 기존 값 유지
+- 지원 설정:
+  - `INTERVAL_HOURS`
+  - `STEP_DELAY_MS`
+  - `CLUSTER_RADIUS_METERS`
+  - `APPEND_BUILDING_NAME`
+  - `API_TIMEOUT_MS`
+  - `NAVER_API_TIMEOUT_MS`
+  - `VWORLD_API_KEY`
+  - `NAVER_CLIENT_ID`
+  - `NAVER_CLIENT_SECRET`
+
+## 설정 적용 원칙
+
+Admin 설정 페이지는 공통 `.env` 파일을 수정한다.
+
+운영 compose 기준:
+
+```text
+/docker/immich/.env
+  ├─ immich-geosync-worker -> /app/.env:ro
+  └─ immich-geosync-admin  -> /app/.env:rw
+```
+
+저장 직후 설정 페이지에는 새 값이 표시되지만, 실제 worker/admin 동작은 각 Node process가 시작될 때 읽은 `process.env`를 기준으로 한다. 따라서 설정 저장 후에는 관련 컨테이너를 재기동해야 한다.
+
+기본 운영 절차:
+
+```bash
+docker compose restart immich-geosync-worker immich-geosync-admin
+```
+
+## 우선순위
+
+위치 보정 우선순위는 아래 순서를 따른다.
 
 1. manual override rule
-2. cache hit
-3. reverse geocode API
-4. mapping fallback
+2. single-cluster group
+3. cache hit
+4. reverse geocode API
+5. mapping fallback
 
-즉 사람이 지정한 규칙이 항상 자동 결과보다 우선한다.
+즉 사람이 지정한 규칙이 자동 결과보다 우선한다.
 
-## MVP 범위
+## DB 보조 테이블
 
-### 포함
+- `custom_geo_override_rules`
+- `custom_geo_cluster_groups`
+- `custom_geo_worker_runs`
+- `custom_geo_worker_logs`
+- `custom_geo_worker_state`
 
-- 지도 기반 관리자 페이지
-- 클러스터 목록 조회 API
-- 캐시된 클러스터 지도 표시
-- polygon override rule 생성/수정/삭제
-- point override rule 생성/수정/삭제
-- rule 영향 범위 미리보기
-- 특정 rule을 기준으로 asset_exif 재반영 실행
-- rule 적용 우선순위: override > cache > API > fallback
+프로그램명은 Immich GeoSync로 정리했지만, DB 테이블명은 운영 데이터 호환을 위해 기존 `custom_geo_*` 이름을 유지한다.
 
-### 제외
+## 운영 이름
 
-- 클러스터 자동 병합 알고리즘 UI
-- 클러스터 수동 분리 UI
-- 사용자 인증/권한 시스템
-- 사진 썸네일 브라우저
-- 다중 사용자 감사 로그
-- circle/rectangle 전용 편집기
-
-## 기술 방향
-
-현재 저장소는 Node 워커 중심이고 웹 앱 구조가 없다.
-따라서 아래처럼 최소한으로 추가하는 것이 좋다.
-
-- 관리자 API 서버: Node.js + Express
-- 지도 UI: 정적 HTML + Leaflet
-- DB: 기존 PostgreSQL 재사용
-- geometry 저장: 1차는 JSONB / 추후 PostGIS 확장 가능
-
-## 신규 파일/구조 제안
-
-- `admin-server.js` : Express 서버 진입점
-- `admin/` : 정적 UI 파일
-  - `admin/index.html`
-  - `admin/app.js`
-  - `admin/styles.css`
-- `lib/admin-db.js` : 관리자용 DB 로직
-- `lib/override-rules.js` : 공간 규칙 평가 로직
-
-## DB 스키마 초안
-
-### 1) override rule
-
-```sql
-CREATE TABLE IF NOT EXISTS custom_geo_override_rules (
-  id UUID PRIMARY KEY,
-  name VARCHAR NOT NULL,
-  rule_type VARCHAR NOT NULL, -- point | polygon
-  geometry JSONB NOT NULL,
-  country VARCHAR DEFAULT '대한민국',
-  state VARCHAR DEFAULT '',
-  city VARCHAR DEFAULT '',
-  building VARCHAR DEFAULT '',
-  priority INTEGER NOT NULL DEFAULT 100,
-  enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### geometry 예시
-
-point:
-```json
-{
-  "type": "Point",
-  "coordinates": [127.1123, 37.4021],
-  "radiusMeters": 20
-}
-```
-
-polygon:
-```json
-{
-  "type": "Polygon",
-  "coordinates": [
-    [127.1, 37.4],
-    [127.2, 37.4],
-    [127.2, 37.5],
-    [127.1, 37.5],
-    [127.1, 37.4]
-  ]
-}
-```
-
-## API 초안
-
-### GET /api/clusters
-- 현재 asset_exif 기반 좌표 그룹 조회
-- 응답에는 centroid, asset count, sample state/city 포함
-
-### GET /api/rules
-- override rule 목록 조회
-
-### POST /api/rules
-- 새 rule 생성
-
-### PUT /api/rules/:id
-- rule 수정
-
-### DELETE /api/rules/:id
-- rule 삭제
-
-### POST /api/rules/:id/preview
-- 해당 rule에 걸리는 asset 수/샘플 조회
-
-### POST /api/rules/:id/apply
-- 해당 rule을 asset_exif에 직접 반영
-
-## 처리 로직 초안
-
-워커가 클러스터 주소를 얻기 전에 아래를 먼저 확인한다.
-
-1. 좌표가 enabled rule 안에 들어가는가?
-2. 여러 rule에 걸리면 priority가 낮은 숫자 우선
-3. rule이 있으면 해당 state/city/building으로 주소 구성
-4. 없으면 기존 cache/API/fallback 흐름 유지
-
-## UI 초안
-
-### 왼쪽 패널
-- rule 목록
-- 생성 / 수정 / 삭제
-- 이름
-- 우선순위
-- 적용 결과 미리보기
-
-### 지도
-- 클러스터 마커 표시
-- rule polygon 표시
-- 클릭 시 좌표/개수/샘플 위치명 표시
-- draw mode로 polygon 또는 point 생성
-
-### 하단/팝업
-- rule 저장 폼
-- state
-- city
-- building
-- preview count
-- apply button
-
-## 구현 순서
-
-### 1단계
-- Express 서버 추가
-- DB 테이블 생성 함수 추가
-- rule CRUD API 추가
-
-### 2단계
-- Leaflet 기반 지도 UI 추가
-- rule 생성/표시 연동
-
-### 3단계
-- preview/apply API 추가
-- updater.js에 rule 우선 적용 추가
-
-### 4단계
-- README 문서화
-- Docker 실행 경로 정리
-
-## 주요 트레이드오프
-
-### JSONB geometry
-장점:
-- 빠르게 시작 가능
-- PostGIS 의존성 없음
-
-단점:
-- 공간 연산을 애플리케이션 코드에서 처리해야 함
-- 대규모 데이터에는 비효율 가능
-
-MVP는 JSONB로 시작하고, 필요하면 PostGIS로 올리는 것이 적절하다.
-
-## 첫 구현 권장 범위
-
-이번 브랜치 첫 PR은 아래만 담는 것이 좋다.
-
-1. override rule 테이블
-2. admin API 서버
-3. 정적 지도 UI 골격
-4. polygon/point rule 저장
-5. rule 목록/표시
-
-즉, "보는 것 + 규칙 저장"까지 먼저 만들고,
-실제 updater 적용/클러스터 병합은 다음 단계로 나누는 편이 안전하다.
+- GitHub repo: `lscya84/immich-geosync`
+- Docker image: `lscya84/immich-geosync`
+- Worker service: `immich-geosync-worker`
+- Admin service: `immich-geosync-admin`
+- Worker container: `immich_geosync_worker`
+- Admin container: `immich_geosync_admin`
+- Admin URL: `http://openclaw:3030/admin/`
