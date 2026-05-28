@@ -35,6 +35,7 @@ const mapStyleLightAttribution = (process.env.IMMICH_MAP_STYLE_LIGHT_ATTRIBUTION
 const mapStyleDarkAttribution = (process.env.IMMICH_MAP_STYLE_DARK_ATTRIBUTION || mapStyleLightAttribution).trim();
 const mapStyleMaxZoom = Math.max(0, Math.min(22, parseInt(process.env.IMMICH_MAP_STYLE_MAX_ZOOM || '19', 10) || 19));
 const adminDebugLogs = /^(1|true|yes|on)$/i.test(String(process.env.ADMIN_DEBUG_LOGS || '').trim());
+const appendBuildingName = String(process.env.APPEND_BUILDING_NAME || 'true').toLowerCase() === 'true';
 
 function adminDebug(event, payload = {}) {
   if (!adminDebugLogs) return;
@@ -134,7 +135,7 @@ app.post('/api/reverse-geocode/centroid', async (req, res) => {
       vworldKey: (process.env.VWORLD_API_KEY || '').trim(),
       apiTimeoutMs: parseInt(process.env.NAVER_API_TIMEOUT_MS || process.env.API_TIMEOUT_MS || '10000', 10),
     }, {
-      preferBuildingName: true,
+      preferBuildingName: appendBuildingName,
     });
 
     if (!result.ok) {
@@ -149,9 +150,8 @@ app.post('/api/reverse-geocode/centroid', async (req, res) => {
       address: {
         country: result.summary.country || '대한민국',
         state: result.summary.state || '',
-        city: result.summary.buildingName || result.summary.city || '',
+        city: result.summary.city || '',
         buildingName: result.summary.buildingName || '',
-        fallbackCity: result.summary.city || '',
       },
     });
   } catch (error) {
