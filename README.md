@@ -1,4 +1,4 @@
-# Immich KO Geo Admin
+# Immich GeoSync
 
 Immich 사진의 대한민국 위치 정보를 보정하는 **워커 + 관리자 도구 통합 레포**입니다.
 
@@ -7,9 +7,9 @@ Immich 사진의 대한민국 위치 정보를 보정하는 **워커 + 관리자
 - **worker**: 좌표를 한국어 주소로 역지오코딩해 `asset_exif`를 보정
 - **admin**: 클러스터 지도, polygon rule, 수동 override, 단일 클러스터 관리 UI 제공
 
-- GitHub: https://github.com/lscya84/immich-ko-geo-admin
-- Docker Hub: https://hub.docker.com/r/lscya84/immich-ko-geo-admin
-- Releases: https://github.com/lscya84/immich-ko-geo-admin/releases
+- GitHub: https://github.com/lscya84/immich-geosync
+- Docker Hub: https://hub.docker.com/r/lscya84/immich-geosync
+- Releases: https://github.com/lscya84/immich-geosync/releases
 
 ## 구성
 
@@ -37,8 +37,8 @@ Immich 사진의 대한민국 위치 정보를 보정하는 **워커 + 관리자
 
 이 레포는 **레포는 하나, 실행은 둘**로 쓰는 것을 권장합니다.
 
-- `immich-ko-geo-worker` → worker 전용 컨테이너
-- `immich-ko-geo-admin` → admin 전용 컨테이너
+- `immich-geosync-worker` → worker 전용 컨테이너
+- `immich-geosync-admin` → admin 전용 컨테이너
 
 즉, 같은 코드베이스를 쓰되 컨테이너를 분리해 운영합니다.
 
@@ -66,9 +66,9 @@ ADMIN_PORT=3030
 
 ```yaml
 services:
-  immich-ko-geo-worker:
-    container_name: immich_ko_geo_worker
-    image: lscya84/immich-ko-geo-admin:v1.4.2
+  immich-geosync-worker:
+    container_name: immich_geosync_worker
+    image: lscya84/immich-geosync:v1.4.2
     restart: always
     volumes:
       - ./.env:/app/.env:ro
@@ -81,9 +81,9 @@ services:
     depends_on:
       - immich_postgres
 
-  immich-ko-geo-admin:
-    container_name: immich_ko_geo_admin
-    image: lscya84/immich-ko-geo-admin:v1.4.2
+  immich-geosync-admin:
+    container_name: immich_geosync_admin
+    image: lscya84/immich-geosync:v1.4.2
     command: ["node", "admin-server.js"]
     restart: always
     ports:
@@ -108,13 +108,13 @@ services:
 ### worker
 
 ```bash
-docker compose up -d immich-ko-geo-worker
+docker compose up -d immich-geosync-worker
 ```
 
 ### admin
 
 ```bash
-docker compose up -d immich-ko-geo-admin
+docker compose up -d immich-geosync-admin
 ```
 
 브라우저:
@@ -128,37 +128,37 @@ http://<host>:3030/admin/
 ### worker 로그
 
 ```bash
-docker compose logs -f --tail=100 immich-ko-geo-worker
+docker compose logs -f --tail=100 immich-geosync-worker
 ```
 
 ### admin 로그
 
 ```bash
-docker compose logs -f --tail=100 immich-ko-geo-admin
+docker compose logs -f --tail=100 immich-geosync-admin
 ```
 
 ### 기존 사진까지 전체 재처리
 
 ```bash
-docker compose exec immich-ko-geo-worker node updater.js --force
+docker compose exec immich-geosync-worker node updater.js --force
 ```
 
 ### 캐시만 삭제 후 종료
 
 ```bash
-docker compose exec immich-ko-geo-worker node updater.js --clear-cache-only
+docker compose exec immich-geosync-worker node updater.js --clear-cache-only
 ```
 
 ### 단건 좌표 확인
 
 ```bash
-docker compose exec immich-ko-geo-worker node reverse_geocode.js 35.354921 127.558729
+docker compose exec immich-geosync-worker node reverse_geocode.js 35.354921 127.558729
 ```
 
 ### admin 서버 직접 실행
 
 ```bash
-docker compose exec immich-ko-geo-admin node admin-server.js
+docker compose exec immich-geosync-admin node admin-server.js
 ```
 
 ## 배포 메모

@@ -1,5 +1,5 @@
 {
-  "name": "immich-ko-geo-admin",
+  "name": "immich-geosync",
   "version": "1.4.2",
   "private": true,
   "scripts": {

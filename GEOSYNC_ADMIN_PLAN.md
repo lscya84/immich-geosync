@@ -1,4 +1,4 @@
-# Cluster Map Editor MVP Plan
+# Immich GeoSync Admin MVP Plan
 
 ## 목표
 

@@ -127,7 +127,7 @@ app.get('/map-styles/light.json', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Cache-Control', 'public, max-age=300');
   res.json(buildRasterMapStyle({
-    name: 'Immich KO Geo Admin Light',
+    name: 'Immich GeoSync Admin Light',
     tileUrl: mapStyleLightTileUrl,
     attribution: mapStyleLightAttribution,
   }));
@@ -137,7 +137,7 @@ app.get('/map-styles/dark.json', (req, res) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Cache-Control', 'public, max-age=300');
   res.json(buildRasterMapStyle({
-    name: 'Immich KO Geo Admin Dark',
+    name: 'Immich GeoSync Admin Dark',
     tileUrl: mapStyleDarkTileUrl,
     attribution: mapStyleDarkAttribution,
   }));
@@ -506,7 +506,7 @@ app.get('/api/assets/:id/thumbnail', async (req, res) => {
 async function main() {
   await ensureAdminTables();
   app.listen(port, () => {
-    console.log(`🗺️ Cluster Map Editor listening on http://0.0.0.0:${port}/admin/`);
+    console.log(`🗺️ Immich GeoSync Admin listening on http://0.0.0.0:${port}/admin/`);
   });
 }
 
