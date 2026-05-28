@@ -389,6 +389,14 @@ function formatClusterLocation(cluster = {}) {
   return `${cluster.state || ''} ${cluster.city || ''}`.trim();
 }
 
+function getClusterDisplayName(cluster = {}) {
+  const savedName = String(cluster.name || '').trim();
+  if (savedName && (cluster.clusterType === 'manual_group' || cluster.clusterType === 'single_rule' || cluster.ruleId)) {
+    return savedName;
+  }
+  return formatClusterLocation(cluster);
+}
+
 function formatCoordinateValue(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '-';
@@ -877,7 +885,10 @@ async function openPhotoPanelForCluster(cluster) {
   isEditingClusterCoordinate = false;
   isSavingClusterCoordinate = false;
   clusterCoordinateDraft = null;
-  if (photoPanelTitle) photoPanelTitle.textContent = `사진 ${cluster.assetCount}장`;
+  if (photoPanelTitle) {
+    const displayName = getClusterDisplayName(cluster);
+    photoPanelTitle.textContent = displayName ? `${displayName} · 사진 ${cluster.assetCount}장` : `사진 ${cluster.assetCount}장`;
+  }
   renderPhotoPanelSubtitle();
   if (photoPanelList) {
     photoPanelList.innerHTML = '';
