@@ -48,6 +48,8 @@ const workerLogs = document.getElementById('worker-logs');
 const settingsForm = document.getElementById('settings-form');
 const saveSettingsButton = document.getElementById('save-settings');
 const settingsStatus = document.getElementById('settings-status');
+const navButtons = Array.from(document.querySelectorAll('[data-view-target]'));
+const workspaceViews = Array.from(document.querySelectorAll('[data-view]'));
 
 let drawMode = null;
 let draftPoints = [];
@@ -75,6 +77,29 @@ let lastLoadedClusters = [];
 const photoPageSize = 12;
 let ruleCountRequestSeq = 0;
 const FULL_CLUSTER_DISPLAY_ZOOM = 16;
+
+function setActiveView(viewName) {
+  navButtons.forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.viewTarget === viewName);
+  });
+  workspaceViews.forEach((view) => {
+    view.classList.toggle('is-active', view.dataset.view === viewName);
+  });
+  setMobilePanelOpen(false);
+  if (viewName === 'map') syncMapLayout();
+  if (viewName === 'worker') {
+    loadWorkerSnapshot().catch((error) => {
+      console.error(error);
+      if (workerStatus) workerStatus.textContent = error.message || '워커 상태를 불러오지 못했습니다.';
+    });
+  }
+  if (viewName === 'settings') {
+    loadSettings().catch((error) => {
+      console.error(error);
+      if (settingsStatus) settingsStatus.textContent = error.message || '환경 설정을 불러오지 못했습니다.';
+    });
+  }
+}
 
 function isMobileLayout() {
   return window.matchMedia('(max-width: 900px)').matches;
@@ -1780,6 +1805,9 @@ function initializeMap() {
 }
 
 function bindUiEvents() {
+  navButtons.forEach((button) => {
+    button.addEventListener('click', () => setActiveView(button.dataset.viewTarget || 'map'));
+  });
   document.getElementById('start-polygon').addEventListener('click', () => {
     if (drawMode === 'polygon' || editingRuleId) {
       cancelPolygonOrEditMode();
