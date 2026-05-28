@@ -6,6 +6,12 @@ const { randomUUID } = require('crypto');
 const { reverseGeocode, translateLocation } = require('./lib/geocode');
 const { findMatchingRule, findMatchingGeometryEntity, buildRuleAddress } = require('./lib/override-rules');
 const { buildClusterRuleAddress } = require('./lib/cluster-rule-address');
+const {
+    ensureWorkerMonitorTables,
+    startWorkerRun,
+    finishWorkerRun,
+    appendWorkerLog,
+} = require('./lib/worker-monitor');
 
 const config = {
     naverId: (process.env.NAVER_CLIENT_ID || '').trim(),
@@ -44,6 +50,55 @@ const API_TRACK_LOG_INTERVAL = 50;
 const API_FAILURE_LOG_LIMIT = 5;
 
 let isRunning = false;
+let activeRunId = null;
+let activeLogClient = null;
+const originalConsole = { ...console };
+
+function getWorkerRuntimeConfig() {
+    return {
+        intervalHours: parseInt(process.env.INTERVAL_HOURS || '24', 10),
+        stepDelayMs: config.delay,
+        apiTimeoutMs: config.apiTimeoutMs,
+        clusterRadiusMeters: config.clusterRadiusMeters,
+        clusterYieldInterval: config.clusterYieldInterval,
+        appendBuildingName: config.appendBuildingName,
+        notFoundCacheTtlDays: NOT_FOUND_CACHE_TTL_DAYS,
+    };
+}
+
+function stringifyLogArg(arg) {
+    if (typeof arg === 'string') return arg;
+    if (arg instanceof Error) return arg.stack || arg.message;
+    try {
+        return JSON.stringify(arg);
+    } catch (error) {
+        return String(arg);
+    }
+}
+
+function mirrorConsoleToDb(level, args) {
+    if (!activeLogClient || !activeRunId) return;
+    appendWorkerLog(activeLogClient, {
+        runId: activeRunId,
+        level,
+        message: args.map(stringifyLogArg).join(' '),
+    }).catch((error) => {
+        originalConsole.warn(`[${nowKst()}] ⚠️ 워커 로그 DB 저장 실패: ${error.message}`);
+    });
+}
+
+console.log = (...args) => {
+    originalConsole.log(...args);
+    mirrorConsoleToDb('info', args);
+};
+console.warn = (...args) => {
+    originalConsole.warn(...args);
+    mirrorConsoleToDb('warn', args);
+};
+console.error = (...args) => {
+    originalConsole.error(...args);
+    mirrorConsoleToDb('error', args);
+};
 
 try {
     const mappingPath = path.join(__dirname, 'mapping.json');
@@ -415,8 +470,9 @@ async function main(forceUpdate = false) {
         return;
     }
 
-    const client = new Client(config.db);
     isRunning = true;
+    activeRunId = randomUUID();
+    const client = new Client(config.db);
 
     let connected = false;
     let retryCount = 0;
@@ -442,6 +498,14 @@ async function main(forceUpdate = false) {
     }
 
     try {
+        await ensureWorkerMonitorTables(client);
+        activeLogClient = client;
+        await startWorkerRun(client, {
+            id: activeRunId,
+            forceUpdate,
+            config: getWorkerRuntimeConfig(),
+        });
+
         await ensureCacheTable(client);
 
         if (shouldClearCache || clearCacheOnly) {
@@ -449,6 +513,11 @@ async function main(forceUpdate = false) {
             await clearAllCache(client);
             console.log(`[${nowKst()}] ✅ 메모리/DB 캐시 삭제 완료`);
             if (clearCacheOnly) {
+                await finishWorkerRun(client, {
+                    id: activeRunId,
+                    status: 'completed',
+                    summary: { mode: 'clear-cache-only' },
+                });
                 return;
             }
         }
@@ -482,6 +551,11 @@ async function main(forceUpdate = false) {
 
         if (res.rows.length === 0) {
             console.log(`[${nowKst()}] 🔍 업데이트할 항목이 없습니다.`);
+            await finishWorkerRun(client, {
+                id: activeRunId,
+                status: 'completed',
+                summary: { targetPhotos: 0, totalUpdated: 0 },
+            });
             return;
         }
 
@@ -646,12 +720,42 @@ async function main(forceUpdate = false) {
         console.log(` ├─ 실제 VWorld/Naver 성공 클러스터: ${apiCallCount}개`);
         console.log(` ├─ API 실패 클러스터: ${apiFailedClusters}개`);
         console.log(` └─ 총 DB 반영: ${totalUpdated}건`);
+        await finishWorkerRun(client, {
+            id: activeRunId,
+            status: 'completed',
+            summary: {
+                targetPhotos: res.rows.length,
+                totalClusters: clusters.length,
+                overrideClusters: overrideClusters.length,
+                fastTrackClusters: fastTrackClusters.length,
+                negativeCacheClusters: negativeCacheSkippedClusters,
+                apiTrackClusters: apiTrackClusters.length,
+                overrideUpdated,
+                fastTrackUpdated,
+                apiTrackUpdated,
+                apiAttemptedClusters,
+                apiCallCount,
+                apiFailedClusters,
+                totalUpdated,
+            },
+        });
     } catch (err) {
         console.error('❌ [DB 에러]', err.message);
+        if (activeLogClient && activeRunId) {
+            try {
+                await finishWorkerRun(client, {
+                    id: activeRunId,
+                    status: 'failed',
+                    error: err.message,
+                });
+            } catch (e) {}
+        }
     } finally {
+        activeLogClient = null;
         try {
             await client.end();
         } catch (e) {}
+        activeRunId = null;
         isRunning = false;
     }
 }

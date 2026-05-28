@@ -26,6 +26,29 @@
             <ul id="rule-list" class="rule-list"></ul>
           </div>
         </section>
+
+        <section class="panel-section is-open" data-section="worker">
+          <div class="section-header">
+            <strong>워커 상태</strong>
+            <button id="refresh-worker" type="button">새로고침</button>
+          </div>
+          <div class="panel-section-body">
+            <div id="worker-status" class="worker-status muted">워커 상태를 불러오는 중입니다.</div>
+            <div id="worker-runs" class="worker-runs"></div>
+            <pre id="worker-logs" class="worker-logs"></pre>
+          </div>
+        </section>
+
+        <section class="panel-section is-open" data-section="settings">
+          <div class="section-header">
+            <strong>환경 설정</strong>
+            <button id="save-settings" type="button">저장</button>
+          </div>
+          <div class="panel-section-body">
+            <form id="settings-form" class="settings-form"></form>
+            <div id="settings-status" class="muted"></div>
+          </div>
+        </section>
       </aside>
 
       <main class="map-wrap">

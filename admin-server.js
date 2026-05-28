@@ -2,6 +2,7 @@ const path = require('path');
 const express = require('express');
 const { reverseGeocode } = require('./lib/geocode');
 const { getPolygonCentroid } = require('./lib/cluster-rule-address');
+const { listSettings, updateSettings } = require('./lib/env-settings');
 const {
   ensureAdminTables,
   listRules,
@@ -22,6 +23,7 @@ const {
   updateClusterAddress,
   updateClusterCoordinates,
   mergeCoordinateClusters,
+  getWorkerStatus,
   getAssetPreviewPath,
   getAssetThumbnailPath,
 } = require('./lib/admin-db');
@@ -95,6 +97,30 @@ app.get('/api/runtime-config', (req, res) => {
   res.json({
     naverMapsClientId: (process.env.NAVER_MAPS_CLIENT_ID || process.env.NAVER_CLIENT_ID || '').trim(),
   });
+});
+
+app.get('/api/admin/worker', async (req, res) => {
+  try {
+    res.json(await getWorkerStatus({ logLimit: req.query.logLimit }));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/admin/settings', (req, res) => {
+  try {
+    res.json(listSettings());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/admin/settings', (req, res) => {
+  try {
+    res.json(updateSettings(req.body?.settings || {}));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/map-styles/light.json', (req, res) => {

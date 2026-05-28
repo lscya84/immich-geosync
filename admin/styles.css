@@ -694,6 +694,62 @@ button:disabled {
   gap: 8px;
 }
 
+.worker-status,
+.worker-runs,
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.worker-status-row,
+.worker-run-row {
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 13px;
+}
+
+.worker-status-row strong,
+.worker-run-row strong {
+  color: #374151;
+}
+
+.worker-logs {
+  max-height: 260px;
+  overflow: auto;
+  margin: 10px 0 0;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #111827;
+  color: #f9fafb;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.settings-field {
+  margin-bottom: 8px;
+}
+
+.settings-field span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.settings-field small {
+  display: block;
+  margin-top: 4px;
+  color: #6b7280;
+  word-break: break-word;
+}
+
 .rule-item {
   padding: 10px;
   border: 1px solid #ddd;

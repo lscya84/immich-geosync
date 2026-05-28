@@ -41,6 +41,13 @@ const photoLightboxImage = document.getElementById('photo-lightbox-image');
 const photoLightboxTitle = document.getElementById('photo-lightbox-title');
 const photoLightboxDate = document.getElementById('photo-lightbox-date');
 const previewOutput = document.getElementById('preview-output');
+const refreshWorkerButton = document.getElementById('refresh-worker');
+const workerStatus = document.getElementById('worker-status');
+const workerRuns = document.getElementById('worker-runs');
+const workerLogs = document.getElementById('worker-logs');
+const settingsForm = document.getElementById('settings-form');
+const saveSettingsButton = document.getElementById('save-settings');
+const settingsStatus = document.getElementById('settings-status');
 
 let drawMode = null;
 let draftPoints = [];
@@ -131,6 +138,29 @@ function formatAssetDateGroupLabel(value) {
     day: 'numeric',
     weekday: 'short',
   }).format(date);
+}
+
+function formatShortDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('ko-KR', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function appendKeyValueRow(parent, className, key, value) {
+  const row = document.createElement('div');
+  row.className = className;
+  const label = document.createElement('strong');
+  label.textContent = key;
+  const text = document.createElement('span');
+  text.textContent = value || '-';
+  row.append(label, text);
+  parent.appendChild(row);
 }
 
 function syncMapLayout() {
@@ -1537,6 +1567,101 @@ async function fetchJson(url, options) {
   return data;
 }
 
+function renderWorkerSnapshot(snapshot) {
+  if (workerStatus) {
+    workerStatus.innerHTML = '';
+    appendKeyValueRow(workerStatus, 'worker-status-row', '상태', snapshot.state?.status || 'unknown');
+    appendKeyValueRow(workerStatus, 'worker-status-row', '최근 갱신', formatShortDateTime(snapshot.state?.updatedAt));
+    appendKeyValueRow(workerStatus, 'worker-status-row', '작동 주기', snapshot.state?.intervalHours ? `${snapshot.state.intervalHours}시간` : '');
+    appendKeyValueRow(workerStatus, 'worker-status-row', '건물명', snapshot.state?.appendBuildingName === true ? '사용' : '미사용');
+    const config = snapshot.state?.config || {};
+    appendKeyValueRow(workerStatus, 'worker-status-row', '클러스터 반경', config.clusterRadiusMeters ? `${config.clusterRadiusMeters}m` : '');
+  }
+
+  if (workerRuns) {
+    workerRuns.innerHTML = '';
+    (snapshot.runs || []).slice(0, 4).forEach((run) => {
+      const summary = run.summary || {};
+      const parts = [
+        `${formatShortDateTime(run.startedAt)} ${run.status}`,
+        Number.isFinite(Number(summary.totalUpdated)) ? `반영 ${summary.totalUpdated}건` : '',
+        run.error ? `오류 ${run.error}` : '',
+      ].filter(Boolean).join(' · ');
+      appendKeyValueRow(workerRuns, 'worker-run-row', run.forceUpdate ? '수동 실행' : '정기 실행', parts);
+    });
+  }
+
+  if (workerLogs) {
+    workerLogs.textContent = (snapshot.logs || [])
+      .map((log) => `[${formatShortDateTime(log.createdAt)}] ${String(log.level || 'info').toUpperCase()} ${log.message}`)
+      .join('\n') || '아직 저장된 워커 로그가 없습니다.';
+  }
+}
+
+async function loadWorkerSnapshot() {
+  if (workerStatus) workerStatus.textContent = '워커 상태를 불러오는 중입니다.';
+  renderWorkerSnapshot(await fetchJson('/api/admin/worker?logLimit=160'));
+}
+
+function renderSettings(settingsPayload) {
+  if (!settingsForm) return;
+  settingsForm.innerHTML = '';
+  (settingsPayload.settings || []).forEach((setting) => {
+    const label = document.createElement('label');
+    label.className = 'settings-field';
+    label.dataset.key = setting.key;
+
+    const title = document.createElement('span');
+    title.textContent = setting.label || setting.key;
+    label.appendChild(title);
+
+    let input;
+    if (setting.type === 'boolean') {
+      input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = /^(1|true|yes|on)$/i.test(String(setting.value || ''));
+    } else {
+      input = document.createElement('input');
+      input.type = setting.type === 'number' ? 'number' : 'text';
+      input.value = setting.secret ? '' : (setting.value || '');
+      if (setting.secret) input.placeholder = setting.isSet ? '변경할 때만 새 값 입력' : '값 없음';
+    }
+    input.dataset.key = setting.key;
+    input.dataset.type = setting.type;
+    label.appendChild(input);
+
+    if (setting.secret || setting.displayValue) {
+      const hint = document.createElement('small');
+      hint.textContent = setting.secret ? `현재값: ${setting.displayValue || '없음'}` : setting.key;
+      label.appendChild(hint);
+    }
+
+    settingsForm.appendChild(label);
+  });
+
+  if (settingsStatus) settingsStatus.textContent = `설정 파일: ${settingsPayload.path || '/app/.env'}`;
+}
+
+async function loadSettings() {
+  if (settingsStatus) settingsStatus.textContent = '환경 설정을 불러오는 중입니다.';
+  renderSettings(await fetchJson('/api/admin/settings'));
+}
+
+async function saveSettings() {
+  if (!settingsForm) return;
+  const settings = {};
+  settingsForm.querySelectorAll('input[data-key]').forEach((input) => {
+    settings[input.dataset.key] = input.type === 'checkbox' ? (input.checked ? 'true' : 'false') : input.value;
+  });
+  if (settingsStatus) settingsStatus.textContent = '환경 설정을 저장하는 중입니다.';
+  renderSettings(await fetchJson('/api/admin/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings }),
+  }));
+  if (settingsStatus) settingsStatus.textContent = '저장했습니다. 워커 재기동 후 새 설정이 적용됩니다.';
+}
+
 async function loadRules() {
   const data = await fetchJson('/api/rules');
   renderRules(data.rules, { refreshOverlays: true });
@@ -1694,6 +1819,14 @@ function bindUiEvents() {
       });
   });
   document.getElementById('refresh-rules').addEventListener('click', loadRules);
+  refreshWorkerButton?.addEventListener('click', () => loadWorkerSnapshot().catch((error) => {
+    console.error(error);
+    if (workerStatus) workerStatus.textContent = error.message || '워커 상태를 불러오지 못했습니다.';
+  }));
+  saveSettingsButton?.addEventListener('click', () => saveSettings().catch((error) => {
+    console.error(error);
+    if (settingsStatus) settingsStatus.textContent = error.message || '환경 설정을 저장하지 못했습니다.';
+  }));
   document.getElementById('refresh-clusters').addEventListener('click', () => refreshClustersNow().catch((error) => {
     console.error(error);
   }));
@@ -1806,7 +1939,7 @@ async function init() {
   bindUiEvents();
   await loadNaverMapsScript();
   initializeMap();
-  await Promise.all([loadRules(), refreshClustersNow()]);
+  await Promise.all([loadRules(), refreshClustersNow(), loadWorkerSnapshot(), loadSettings()]);
 }
 
 init().catch((error) => {
