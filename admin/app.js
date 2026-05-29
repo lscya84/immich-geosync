@@ -1721,7 +1721,7 @@ function renderWorkerSnapshot(snapshot) {
 
   if (workerLogs) {
     latestWorkerLogText = (snapshot.logs || [])
-      .map((log) => `[${formatShortDateTime(log.createdAt)}] ${String(log.level || 'info').toUpperCase()} ${log.message}`)
+      .map((log) => `${String(log.level || 'info').toUpperCase()} ${log.message}`)
       .join('\n') || '아직 저장된 워커 로그가 없습니다.';
     workerLogs.textContent = latestWorkerLogText;
     requestAnimationFrame(scrollWorkerLogsToLatest);
