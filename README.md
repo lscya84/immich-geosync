@@ -8,6 +8,23 @@ Immich 사진의 대한민국 위치 정보를 한국어 주소로 보정하고,
 
 ---
 
+## 🔑 필수 API 키 및 서비스 안내
+
+Immich GeoSync의 고품질 한국어 주소 변환 및 지도 시각화 서비스를 구동하려면 다음 **두 가지 공공/민간 API 키가 필수로 요구**됩니다.
+
+1. **VWorld API Key (국토교통부 공간정보 오픈플랫폼 - 필수)**
+   * **역할:** 워커(`updater.js`) 구동 시 경위도 좌표를 최신의 대한민국 지번 및 도로명 주소로 역지오코딩(Reverse Geocoding)하는 핵심 변환 API입니다.
+   * **특징:** 하루 30,000건의 넉넉한 무료 쿼리를 제공하여 대량의 개인 사진 보정에 가장 적합합니다.
+   * **발급처:** [VWorld 오픈API 센터](https://www.vworld.kr/dev/vapis.do)에서 누구나 무료로 발급 가능합니다.
+
+2. **NAVER Maps API (네이버 클라우드 플랫폼 - 필수)**
+   * **역할:** 
+     * **지도 뷰어:** Admin Web에서 전국 단위 사진 클러스터를 지도상에 띄우고, 폴리곤 구역을 마우스로 그리는 화면을 가동할 때 네이버 지도를 렌더링하기 위해 사용됩니다.
+     * **역지오코딩 백업:** VWorld API가 간헐적으로 오류가 나거나 결과를 찾을 수 없을 때 백업 주소 추출 수단으로 구동됩니다.
+   * **발급처:** [NAVER Cloud Platform 주소/지도 서비스](https://www.ncloud.com/product/applicationService/maps)에서 무료 한도 내(Web Map 월 300만 건 무료)로 등록 및 발급받으실 수 있습니다. (`Client ID` 및 `Client Secret` 필요)
+
+---
+
 ## 🏗️ 시스템 아키텍처 및 상세 작동 원리
 
 이 프로젝트는 하나의 코드베이스에서 두 개의 고유 컨테이너로 역할을 분할하여 구동합니다. 두 서비스는 같은 Immich PostgreSQL 데이터베이스와 공유 `.env` 환경 변수 설정을 마운트하여 긴밀하게 협업합니다.
@@ -31,6 +48,12 @@ Immich 사진의 대한민국 위치 정보를 한국어 주소로 보정하고,
 * **폴리곤 맵 에디터 (Override Polygon Editor)**
   * 지도(네이버 지도 백그라운드) 위에서 원하는 범위(아파트, 학교, 내 집, 캠핑장 등)를 마우스로 직접 다각형으로 그리고 명칭과 우선순위를 부여할 수 있습니다.
   * 이 범주 안의 모든 사진들은 외부 Geocoding 결과에 상관없이 해당 주소와 사용자 커스텀 장소명(예: `우리 집`, `가평 OO 캠핑장`)으로 무조건 강제 매핑됩니다.
+* **클러스터별 개별 사진 탐색 & 실시간 미리보기 (Cluster Media Browser)**
+  * 지도상의 임의의 좌표 핀(최소 단위 클러스터)을 선택하면, **그곳에서 촬영된 모든 사진 목록이 우측 패널에 실시간 썸네일 미리보기(Thumbnail Preview)로 노출**됩니다.
+  * Immich 업로드 물리 경로(`/usr/src/app/upload`)를 마운트하여 DB 속 메타데이터와 파일 실체를 실시간 매핑하기 때문에 가능한 강력한 탐색 기능입니다.
+* **클러스터 드래그 앤 드롭 좌표 조정 기능 (GPS Precision Dragger)**
+  * 오차가 있는 GPS 신호나 카메라 기기의 왜곡으로 인해 엉뚱한 곳에 찍힌 사진 클러스터를 지도상에서 실시간으로 드래그할 수 있습니다.
+  * 우측 패널의 **"좌표 수정" 핀 버튼**을 누르면 지도에 활성 오렌지 핀이 등장하며, **원하는 올바른 위치로 마우스 드래그한 후 [저장]을 누르는 즉시 해당 클러스터에 귀속된 수십~수백 장의 모든 사진 위경도 EXIF 정보가 일괄 변환 및 업데이트**됩니다!
 * **워커 실시간 실황 관제 (Live Monitor)**
   * 워커의 동작 상태, DB 연결 성공율, 처리 진행률(진행 비율 %)을 실시간으로 추적합니다.
   * 하단에 일체형으로 빌드된 웹 터미널 창을 통해 최신 분석 로그가 실시간 오토 스크롤되며 자동 새로고침(10초 주기 온오프), 클립보드 복사, 텍스트 파일로 전체 다운로드 기능 등을 지원합니다.
@@ -66,13 +89,13 @@ docker compose restart immich-geosync-worker immich-geosync-admin
 DB_HOSTNAME=immich_postgres
 DB_PORT=5432
 DB_USERNAME=postgres
-DB_PASSWORD=your_d…here
+DB_PASSWORD=***
 DB_DATABASE_NAME=immich
 
-# 국내 역지오코딩 API 설정
-VWORLD_API_KEY=your_v…here
+# 국내 역지오코딩 API 설정 (VWorld 및 Naver API 가입 필수)
+VWORLD_API_KEY=***
 NAVER_CLIENT_ID=your_naver_client_id_here
-NAVER_CLIENT_SECRET=your_n…here
+NAVER_CLIENT_SECRET=***
 
 # 동작 제어 설정
 INTERVAL_HOURS=24
