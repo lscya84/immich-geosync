@@ -24,6 +24,8 @@ const {
   updateClusterCoordinates,
   mergeCoordinateClusters,
   listClusterGeocodeCaches,
+  listClusterGeocodeCacheStates,
+  listClusterGeocodeCacheCities,
   updateClusterGeocodeCache,
   getWorkerStatus,
   getAssetPreviewPath,
@@ -469,7 +471,28 @@ app.put('/api/clusters/coordinates', async (req, res) => {
 
 app.get('/api/clusters/cache', async (req, res) => {
   try {
-    res.json({ caches: await listClusterGeocodeCaches() });
+    res.json(await listClusterGeocodeCaches({
+      page: req.query.page,
+      pageSize: req.query.pageSize,
+      state: req.query.state,
+      city: req.query.city,
+    }));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/clusters/cache/filter/states', async (req, res) => {
+  try {
+    res.json({ states: await listClusterGeocodeCacheStates() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/clusters/cache/filter/cities', async (req, res) => {
+  try {
+    res.json({ cities: await listClusterGeocodeCacheCities(req.query.state) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

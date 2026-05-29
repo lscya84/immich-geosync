@@ -54,6 +54,10 @@ const settingsStatus = document.getElementById('settings-status');
 const refreshCacheButton = document.getElementById('refresh-cache');
 const cacheStatus = document.getElementById('cache-status');
 const cacheTableBody = document.getElementById('cache-table-body');
+const cacheFilterStateSelect = document.getElementById('cache-filter-state');
+const cacheFilterCitySelect = document.getElementById('cache-filter-city');
+const cachePageSizeSelect = document.getElementById('cache-page-size');
+const cachePagination = document.getElementById('cache-pagination');
 const navButtons = Array.from(document.querySelectorAll('[data-view-target]'));
 const workspaceViews = Array.from(document.querySelectorAll('[data-view]'));
 
@@ -86,6 +90,9 @@ let lastLoadedClusters = [];
 const photoPageSize = 12;
 let ruleCountRequestSeq = 0;
 const FULL_CLUSTER_DISPLAY_ZOOM = 16;
+let cachePage = 1;
+let cachePageSize = Number(cachePageSizeSelect?.value || 100);
+let cacheTotalPages = 1;
 
 function setActiveView(viewName) {
   navButtons.forEach((button) => {
@@ -1743,6 +1750,69 @@ function formatUpdatedAt(value) {
   return date.toLocaleString('ko-KR');
 }
 
+function renderCacheCityOptions(cities = []) {
+  if (!cacheFilterCitySelect) return;
+  const current = cacheFilterCitySelect.value || '';
+  cacheFilterCitySelect.innerHTML = '<option value="">전체</option>';
+  (Array.isArray(cities) ? cities : []).forEach((city) => {
+    const option = document.createElement('option');
+    option.value = city;
+    option.textContent = city;
+    cacheFilterCitySelect.appendChild(option);
+  });
+  cacheFilterCitySelect.value = current && cities.includes(current) ? current : '';
+}
+
+function renderCacheStateOptions(states = []) {
+  if (!cacheFilterStateSelect) return;
+  const current = cacheFilterStateSelect.value || '';
+  cacheFilterStateSelect.innerHTML = '<option value="">전체</option>';
+  (Array.isArray(states) ? states : []).forEach((state) => {
+    const option = document.createElement('option');
+    option.value = state;
+    option.textContent = state;
+    cacheFilterStateSelect.appendChild(option);
+  });
+  cacheFilterStateSelect.value = current && states.includes(current) ? current : '';
+}
+
+function renderCachePagination() {
+  if (!cachePagination) return;
+  cachePagination.innerHTML = '';
+  const totalPages = Math.max(1, Number(cacheTotalPages) || 1);
+  const current = Math.max(1, Math.min(totalPages, Number(cachePage) || 1));
+  const windowSize = 9;
+  const half = Math.floor(windowSize / 2);
+  let start = Math.max(1, current - half);
+  let end = Math.min(totalPages, start + windowSize - 1);
+  start = Math.max(1, end - windowSize + 1);
+
+  const makeButton = (label, targetPage, active = false, disabled = false) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'cache-page-button';
+    if (active) button.classList.add('is-active');
+    button.textContent = label;
+    button.disabled = disabled;
+    button.addEventListener('click', () => {
+      cachePage = targetPage;
+      loadClusterCacheList().catch((error) => {
+        console.error(error);
+        if (cacheStatus) cacheStatus.textContent = error.message || '캐시 목록을 불러오지 못했습니다.';
+      });
+    });
+    return button;
+  };
+
+  cachePagination.appendChild(makeButton('«', 1, false, current === 1));
+  cachePagination.appendChild(makeButton('‹', Math.max(1, current - 1), false, current === 1));
+  for (let page = start; page <= end; page += 1) {
+    cachePagination.appendChild(makeButton(String(page), page, page === current));
+  }
+  cachePagination.appendChild(makeButton('›', Math.min(totalPages, current + 1), false, current === totalPages));
+  cachePagination.appendChild(makeButton('»', totalPages, false, current === totalPages));
+}
+
 function renderClusterCacheList(caches = []) {
   if (!cacheTableBody) return;
   cacheTableBody.innerHTML = '';
@@ -1838,9 +1908,34 @@ function renderClusterCacheList(caches = []) {
 
 async function loadClusterCacheList() {
   if (cacheStatus) cacheStatus.textContent = '캐시 목록을 불러오는 중입니다.';
-  const data = await fetchJson('/api/clusters/cache');
+  const params = new URLSearchParams();
+  params.set('page', String(cachePage));
+  params.set('pageSize', String(cachePageSize));
+  if (cacheFilterStateSelect?.value) params.set('state', cacheFilterStateSelect.value);
+  if (cacheFilterCitySelect?.value) params.set('city', cacheFilterCitySelect.value);
+  const data = await fetchJson(`/api/clusters/cache?${params.toString()}`);
   renderClusterCacheList(data.caches || []);
-  if (cacheStatus) cacheStatus.textContent = `총 ${(data.caches || []).length}개 캐시`;
+  cacheTotalPages = Number(data.pagination?.totalPages || 1);
+  cachePage = Number(data.pagination?.page || cachePage);
+  renderCachePagination();
+  if (cacheStatus) {
+    cacheStatus.textContent = `총 ${Number(data.pagination?.total || 0)}개 캐시 · ${cachePage}/${cacheTotalPages} 페이지`;
+  }
+}
+
+async function loadCacheStates() {
+  const data = await fetchJson('/api/clusters/cache/filter/states');
+  renderCacheStateOptions(data.states || []);
+}
+
+async function loadCacheCities() {
+  const state = cacheFilterStateSelect?.value || '';
+  if (!state) {
+    renderCacheCityOptions([]);
+    return;
+  }
+  const data = await fetchJson(`/api/clusters/cache/filter/cities?state=${encodeURIComponent(state)}`);
+  renderCacheCityOptions(data.cities || []);
 }
 
 async function saveSettings() {
@@ -2038,6 +2133,28 @@ function bindUiEvents() {
     console.error(error);
     if (cacheStatus) cacheStatus.textContent = error.message || '캐시 목록을 불러오지 못했습니다.';
   }));
+  cacheFilterStateSelect?.addEventListener('change', () => {
+    cachePage = 1;
+    loadCacheCities().then(() => loadClusterCacheList()).catch((error) => {
+      console.error(error);
+      if (cacheStatus) cacheStatus.textContent = error.message || '캐시 목록을 불러오지 못했습니다.';
+    });
+  });
+  cacheFilterCitySelect?.addEventListener('change', () => {
+    cachePage = 1;
+    loadClusterCacheList().catch((error) => {
+      console.error(error);
+      if (cacheStatus) cacheStatus.textContent = error.message || '캐시 목록을 불러오지 못했습니다.';
+    });
+  });
+  cachePageSizeSelect?.addEventListener('change', () => {
+    cachePageSize = Number(cachePageSizeSelect.value || 100);
+    cachePage = 1;
+    loadClusterCacheList().catch((error) => {
+      console.error(error);
+      if (cacheStatus) cacheStatus.textContent = error.message || '캐시 목록을 불러오지 못했습니다.';
+    });
+  });
   document.getElementById('refresh-clusters').addEventListener('click', () => refreshClustersNow().catch((error) => {
     console.error(error);
   }));
@@ -2150,7 +2267,9 @@ async function init() {
   bindUiEvents();
   await loadNaverMapsScript();
   initializeMap();
-  await Promise.all([loadRules(), refreshClustersNow(), loadWorkerSnapshot(), loadSettings(), loadClusterCacheList()]);
+  await Promise.all([loadRules(), refreshClustersNow(), loadWorkerSnapshot(), loadSettings(), loadCacheStates()]);
+  await loadCacheCities();
+  await loadClusterCacheList();
 }
 
 init().catch((error) => {

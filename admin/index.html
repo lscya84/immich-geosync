@@ -84,6 +84,26 @@
               </div>
               <div class="panel-section-body">
                 <div id="cache-status" class="muted">캐시 목록을 불러오는 중입니다.</div>
+                <div class="cache-filter-row">
+                  <label>State
+                    <select id="cache-filter-state">
+                      <option value="">전체</option>
+                    </select>
+                  </label>
+                  <label>City
+                    <select id="cache-filter-city">
+                      <option value="">전체</option>
+                    </select>
+                  </label>
+                  <label>페이지 크기
+                    <select id="cache-page-size">
+                      <option value="50">50</option>
+                      <option value="100" selected>100</option>
+                      <option value="150">150</option>
+                      <option value="200">200</option>
+                    </select>
+                  </label>
+                </div>
                 <div class="cache-table-wrap">
                   <table class="cache-table">
                     <thead>
@@ -100,6 +120,7 @@
                     <tbody id="cache-table-body"></tbody>
                   </table>
                 </div>
+                <div id="cache-pagination" class="cache-pagination"></div>
               </div>
             </section>
           </div>
