@@ -1,5 +1,7 @@
 const path = require('path');
 const express = require('express');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
 const { reverseGeocode } = require('./lib/geocode');
 const { getPolygonCentroid } = require('./lib/cluster-rule-address');
 const { listSettings, updateSettings } = require('./lib/env-settings');
@@ -33,7 +35,11 @@ const {
 } = require('./lib/admin-db');
 
 const app = express();
+const execFileAsync = promisify(execFile);
 const port = parseInt(process.env.ADMIN_PORT || '3030', 10);
+const composeDir = (process.env.ADMIN_COMPOSE_DIR || '/docker/immich-geosync').trim() || '/docker/immich-geosync';
+const composeBin = (process.env.ADMIN_DOCKER_BIN || 'docker').trim() || 'docker';
+const restartTimeoutMs = Math.max(3000, parseInt(process.env.ADMIN_RESTART_TIMEOUT_MS || '90000', 10) || 90000);
 const uploadRoot = (process.env.UPLOAD_LOCATION || '/usr/src/app/upload').trim() || '/usr/src/app/upload';
 const mapStyleLightTileUrl = (process.env.IMMICH_MAP_STYLE_LIGHT_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png').trim();
 const mapStyleDarkTileUrl = (process.env.IMMICH_MAP_STYLE_DARK_TILE_URL || mapStyleLightTileUrl).trim();
@@ -124,6 +130,40 @@ app.put('/api/admin/settings', (req, res) => {
     res.json(updateSettings(req.body?.settings || {}));
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+async function restartTarget(target) {
+  const map = {
+    worker: ['immich-geosync-worker'],
+    all: ['immich-geosync-worker', 'immich-geosync-admin'],
+  };
+  const services = map[target];
+  if (!services) throw new Error('지원하지 않는 재시작 대상입니다.');
+  const args = ['compose', 'restart', ...services];
+  const { stdout, stderr } = await execFileAsync(composeBin, args, {
+    cwd: composeDir,
+    timeout: restartTimeoutMs,
+    maxBuffer: 1024 * 1024,
+  });
+  return {
+    target,
+    services,
+    stdout: String(stdout || '').trim(),
+    stderr: String(stderr || '').trim(),
+  };
+}
+
+app.post('/api/admin/restart', async (req, res) => {
+  try {
+    const target = String(req.body?.target || '').trim().toLowerCase();
+    if (!['worker', 'all'].includes(target)) {
+      return res.status(400).json({ error: 'target은 worker 또는 all 이어야 합니다.' });
+    }
+    const result = await restartTarget(target);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(500).json({ error: `재시작 실패: ${error.message}` });
   }
 });
 

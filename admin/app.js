@@ -42,6 +42,8 @@ const photoLightboxTitle = document.getElementById('photo-lightbox-title');
 const photoLightboxDate = document.getElementById('photo-lightbox-date');
 const previewOutput = document.getElementById('preview-output');
 const refreshWorkerButton = document.getElementById('refresh-worker');
+const restartWorkerButton = document.getElementById('restart-worker');
+const restartAllButton = document.getElementById('restart-all');
 const autoRefreshWorkerButton = document.getElementById('auto-refresh-worker');
 const copyWorkerLogsButton = document.getElementById('copy-worker-logs');
 const downloadWorkerLogsButton = document.getElementById('download-worker-logs');
@@ -51,6 +53,13 @@ const workerLogs = document.getElementById('worker-logs');
 const settingsForm = document.getElementById('settings-form');
 const saveSettingsButton = document.getElementById('save-settings');
 const settingsStatus = document.getElementById('settings-status');
+const restartConfirmModal = document.getElementById('restart-confirm-modal');
+const restartConfirmBackdrop = document.getElementById('restart-confirm-backdrop');
+const restartConfirmCloseButton = document.getElementById('restart-confirm-close');
+const restartConfirmCancelButton = document.getElementById('restart-confirm-cancel');
+const restartConfirmApproveButton = document.getElementById('restart-confirm-approve');
+const restartConfirmTitle = document.getElementById('restart-confirm-title');
+const restartConfirmMessage = document.getElementById('restart-confirm-message');
 const refreshCacheButton = document.getElementById('refresh-cache');
 const cacheStatus = document.getElementById('cache-status');
 const cacheTableBody = document.getElementById('cache-table-body');
@@ -82,6 +91,7 @@ let isSavingClusterCoordinate = false;
 let workerAutoRefreshTimer = null;
 let workerAutoRefreshEnabled = false;
 let latestWorkerLogText = '';
+let restartModalOnApprove = null;
 let clusterCoordinateDraft = null;
 let clusterCoordinateMarker = null;
 let isSelectingClustersForMerge = false;
@@ -1614,6 +1624,28 @@ async function fetchJson(url, options) {
   return data;
 }
 
+function setRestartConfirmModalOpen(open) {
+  restartConfirmModal?.classList.toggle('is-open', open);
+  restartConfirmModal?.setAttribute('aria-hidden', open ? 'false' : 'true');
+}
+
+function closeRestartConfirmModal() {
+  setRestartConfirmModalOpen(false);
+  restartModalOnApprove = null;
+  if (restartConfirmApproveButton) restartConfirmApproveButton.disabled = false;
+}
+
+function openRestartConfirmModal({ title, message, approveLabel, onApprove }) {
+  restartModalOnApprove = onApprove;
+  if (restartConfirmTitle) restartConfirmTitle.textContent = title || '재시작 확인';
+  if (restartConfirmMessage) restartConfirmMessage.textContent = message || '재시작을 진행하시겠습니까?';
+  if (restartConfirmApproveButton) {
+    restartConfirmApproveButton.textContent = approveLabel || '재시작';
+    restartConfirmApproveButton.disabled = false;
+  }
+  setRestartConfirmModalOpen(true);
+}
+
 function scrollWorkerLogsToLatest() {
   if (!workerLogs) return;
   workerLogs.scrollTop = workerLogs.scrollHeight;
@@ -1697,6 +1729,27 @@ function renderWorkerSnapshot(snapshot) {
 async function loadWorkerSnapshot({ showLoading = true } = {}) {
   if (showLoading && workerStatus) workerStatus.textContent = '워커 상태를 불러오는 중입니다.';
   renderWorkerSnapshot(await fetchJson('/api/admin/worker?logLimit=160'));
+}
+
+async function restartServices(target) {
+  const label = target === 'all' ? '전체' : '워커';
+  if (workerStatus) workerStatus.textContent = `${label} 재시작 요청 중...`;
+  restartWorkerButton && (restartWorkerButton.disabled = true);
+  restartAllButton && (restartAllButton.disabled = true);
+  saveSettingsButton && (saveSettingsButton.disabled = true);
+  try {
+    await fetchJson('/api/admin/restart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target }),
+    });
+    if (workerStatus) workerStatus.textContent = `${label} 재시작 요청 완료. 상태를 다시 불러옵니다.`;
+    await loadWorkerSnapshot({ showLoading: false });
+  } finally {
+    restartWorkerButton && (restartWorkerButton.disabled = false);
+    restartAllButton && (restartAllButton.disabled = false);
+    saveSettingsButton && (saveSettingsButton.disabled = false);
+  }
 }
 
 function renderSettings(settingsPayload) {
@@ -1950,7 +2003,16 @@ async function saveSettings() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ settings }),
   }));
-  if (settingsStatus) settingsStatus.textContent = '저장했습니다. 워커 재기동 후 새 설정이 적용됩니다.';
+  if (settingsStatus) settingsStatus.textContent = '저장했습니다. 재시작을 하면 새 설정이 즉시 반영됩니다.';
+  openRestartConfirmModal({
+    title: '설정 저장 완료',
+    message: '저장을 완료했습니다. 지금 재시작하시겠습니까?',
+    approveLabel: '전체 재시작',
+    onApprove: async () => {
+      await restartServices('all');
+      if (settingsStatus) settingsStatus.textContent = '전체 재시작을 요청했습니다.';
+    },
+  });
 }
 
 async function loadRules() {
@@ -2117,6 +2179,26 @@ function bindUiEvents() {
     console.error(error);
     if (workerStatus) workerStatus.textContent = error.message || '워커 상태를 불러오지 못했습니다.';
   }));
+  restartWorkerButton?.addEventListener('click', () => {
+    openRestartConfirmModal({
+      title: '워커 재시작',
+      message: 'immich-geosync-worker만 재시작합니다. 진행하시겠습니까?',
+      approveLabel: '워커 재시작',
+      onApprove: async () => {
+        await restartServices('worker');
+      },
+    });
+  });
+  restartAllButton?.addEventListener('click', () => {
+    openRestartConfirmModal({
+      title: '전체 재시작',
+      message: 'worker + admin 전체를 재시작합니다. 진행하시겠습니까?',
+      approveLabel: '전체 재시작',
+      onApprove: async () => {
+        await restartServices('all');
+      },
+    });
+  });
   autoRefreshWorkerButton?.addEventListener('click', () => {
     setWorkerAutoRefresh(!workerAutoRefreshEnabled);
   });
@@ -2129,6 +2211,27 @@ function bindUiEvents() {
     console.error(error);
     if (settingsStatus) settingsStatus.textContent = error.message || '환경 설정을 저장하지 못했습니다.';
   }));
+  restartConfirmCloseButton?.addEventListener('click', closeRestartConfirmModal);
+  restartConfirmCancelButton?.addEventListener('click', closeRestartConfirmModal);
+  restartConfirmBackdrop?.addEventListener('click', closeRestartConfirmModal);
+  restartConfirmApproveButton?.addEventListener('click', async () => {
+    if (!restartModalOnApprove) {
+      closeRestartConfirmModal();
+      return;
+    }
+    restartConfirmApproveButton.disabled = true;
+    try {
+      await restartModalOnApprove();
+      closeRestartConfirmModal();
+    } catch (error) {
+      console.error(error);
+      const message = error?.message || '재시작 요청에 실패했습니다.';
+      if (settingsStatus) settingsStatus.textContent = message;
+      if (workerStatus) workerStatus.textContent = message;
+      alert(message);
+      restartConfirmApproveButton.disabled = false;
+    }
+  });
   refreshCacheButton?.addEventListener('click', () => loadClusterCacheList().catch((error) => {
     console.error(error);
     if (cacheStatus) cacheStatus.textContent = error.message || '캐시 목록을 불러오지 못했습니다.';

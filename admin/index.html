@@ -135,7 +135,11 @@
             <section class="panel-section is-open" data-section="worker">
               <div class="section-header">
                 <strong>상태 요약</strong>
-                <button id="refresh-worker" type="button">새로고침</button>
+                <div class="worker-header-actions">
+                  <button id="restart-worker" type="button">워커 재시작</button>
+                  <button id="restart-all" type="button">전체 재시작</button>
+                  <button id="refresh-worker" type="button">새로고침</button>
+                </div>
               </div>
               <div class="panel-section-body worker-grid">
                 <div id="worker-status" class="worker-status muted">워커 상태를 불러오는 중입니다.</div>
@@ -219,6 +223,23 @@
           <button id="rule-modal-cancel" type="button">취소</button>
           <button id="save-rule-button" type="button">저장</button>
           <button id="save-apply-rule-button" type="button" class="primary-action">저장 후 적용</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="restart-confirm-modal" class="confirm-modal" aria-hidden="true">
+      <div id="restart-confirm-backdrop" class="confirm-modal-backdrop"></div>
+      <div class="confirm-modal-dialog">
+        <div class="confirm-modal-header">
+          <strong id="restart-confirm-title">재시작 확인</strong>
+          <button id="restart-confirm-close" type="button" aria-label="재시작 모달 닫기">✕</button>
+        </div>
+        <div id="restart-confirm-message" class="confirm-modal-body">
+          재시작을 진행하시겠습니까?
+        </div>
+        <div class="confirm-modal-actions">
+          <button id="restart-confirm-cancel" type="button">취소</button>
+          <button id="restart-confirm-approve" type="button" class="primary-action">재시작</button>
         </div>
       </div>
     </div>
