@@ -48,6 +48,7 @@ const mapStyleDarkAttribution = (process.env.IMMICH_MAP_STYLE_DARK_ATTRIBUTION |
 const mapStyleMaxZoom = Math.max(0, Math.min(22, parseInt(process.env.IMMICH_MAP_STYLE_MAX_ZOOM || '19', 10) || 19));
 const adminDebugLogs = /^(1|true|yes|on)$/i.test(String(process.env.ADMIN_DEBUG_LOGS || '').trim());
 const appendBuildingName = String(process.env.APPEND_BUILDING_NAME || 'true').toLowerCase() === 'true';
+const adminApiToken = String(process.env.ADMIN_API_TOKEN || '').trim();
 
 function adminDebug(event, payload = {}) {
   if (!adminDebugLogs) return;
@@ -56,6 +57,22 @@ function adminDebug(event, payload = {}) {
 
 app.use(express.json({ limit: '1mb' }));
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
+  next();
+});
+
+app.use('/api', (req, res, next) => {
+  if (!adminApiToken) return next();
+  const provided = String(req.header('x-admin-token') || '').trim();
+  if (!provided || provided !== adminApiToken) {
+    return res.status(401).json({ error: '관리자 인증이 필요합니다.' });
+  }
+  return next();
+});
 
 function buildRasterMapStyle({ name, tileUrl, attribution }) {
   return {
@@ -611,6 +628,11 @@ async function main() {
   await ensureAdminTables();
   app.listen(port, () => {
     console.log(`🗺️ Immich GeoSync Admin listening on http://0.0.0.0:${port}/admin/`);
+    if (adminApiToken) {
+      console.log('🔐 Admin API token protection: enabled');
+    } else {
+      console.warn('⚠️ Admin API token protection: disabled (set ADMIN_API_TOKEN to enable)');
+    }
   });
 }
 

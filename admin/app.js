@@ -104,6 +104,26 @@ let cachePage = 1;
 let cachePageSize = Number(cachePageSizeSelect?.value || 100);
 let cacheTotalPages = 1;
 const DISPLAY_TIME_ZONE = 'Asia/Seoul';
+const ADMIN_TOKEN_STORAGE_KEY = 'immich_geosync_admin_token';
+
+function getAdminToken() {
+  return String(window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || '').trim();
+}
+
+function setAdminToken(token) {
+  if (!token) {
+    window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+}
+
+function attachAdminToken(options = {}) {
+  const token = getAdminToken();
+  const headers = new Headers(options.headers || {});
+  if (token) headers.set('x-admin-token', token);
+  return { ...options, headers };
+}
 
 function setActiveView(viewName) {
   navButtons.forEach((button) => {
@@ -1620,7 +1640,14 @@ function renderClusters(clusters) {
 }
 
 async function fetchJson(url, options) {
-  const res = await fetch(url, options);
+  let res = await fetch(url, attachAdminToken(options));
+  if (res.status === 401) {
+    const input = window.prompt('관리자 토큰을 입력해 주세요.');
+    if (input && input.trim()) {
+      setAdminToken(input.trim());
+      res = await fetch(url, attachAdminToken(options));
+    }
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '요청 실패');
   return data;
@@ -1682,7 +1709,14 @@ async function copyWorkerLogs() {
 
 async function downloadWorkerLogs() {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const res = await fetch(`/api/admin/worker/logs/download?logLimit=500&tz=${encodeURIComponent(DISPLAY_TIME_ZONE)}`);
+  let res = await fetch(`/api/admin/worker/logs/download?logLimit=500&tz=${encodeURIComponent(DISPLAY_TIME_ZONE)}`, attachAdminToken());
+  if (res.status === 401) {
+    const input = window.prompt('관리자 토큰을 입력해 주세요.');
+    if (input && input.trim()) {
+      setAdminToken(input.trim());
+      res = await fetch(`/api/admin/worker/logs/download?logLimit=500&tz=${encodeURIComponent(DISPLAY_TIME_ZONE)}`, attachAdminToken());
+    }
+  }
   if (!res.ok) throw new Error('로그 다운로드에 실패했습니다.');
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
