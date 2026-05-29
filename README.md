@@ -17,12 +17,6 @@ Immich 사진의 대한민국 위치 정보를 한국어 주소로 보정하고,
 
 두 서비스는 같은 Immich PostgreSQL 데이터베이스와 공유 `.env` 환경 변수 설정을 마운트하여 긴밀하게 협업합니다.
 
-```text
-/docker/immich/.env
-  ├─ immich-geosync-worker (읽기 전용 마운트: /app/.env:ro)
-  └─ immich-geosync-admin  (읽기/쓰기 마운트: /app/.env)
-```
-
 ---
 
 ## ⚙️ 스마트한 환경 설정 (Web UI 지원)
@@ -42,10 +36,15 @@ docker compose restart immich-geosync-worker immich-geosync-admin
 
 ## 🚀 빠른 시작 (Quick Start)
 
+### 📌 디렉터리 독립성 안내 (반드시 Immich compose 폴더에 둘 필요가 없습니다)
+본 모듈은 Immich 서비스와 **같은 디렉터리에 설치하지 않고 서버 내 임의의 별도 경로(예: `/docker/immich-geosync`)에 단독으로 구성할 수 있습니다.** 
+임의 폴더에 두더라도 아래의 **도커 네트워크 가이드**를 준수하면 자동으로 DB 컨테이너를 탐색하여 완벽하게 통신합니다.
+
 ### 1) `.env` 환경 변수 준비
-Immich compose 루트의 `.env` 파일에 하단 설정을 추가합니다.
+구동할 디렉터리에 `.env` 파일을 생성하고 하단 설정을 입력합니다.
 
 ```env
+# 데이터베이스 연결 정보 (자신의 DB 컨테이너 이름 또는 외부 IP 주소로 지정 가능)
 DB_HOSTNAME=immich_postgres
 DB_PORT=5432
 DB_USERNAME=postgres
@@ -72,19 +71,23 @@ UPLOAD_LOCATION=/path/to/immich/upload
 ```
 
 ### 2) docker-compose.yml 서비스 구성
-기존 Immich `docker-compose.yml` 파일 내부의 `services` 단 하단에 아래 두 서비스를 추가합니다.
+사용자의 실제 도커 네트워크명(기본값은 보통 `immich` 또는 `default` 계열)으로 브릿지 연결을 하도록 `networks` 구성을 추가한 유연한 템플릿입니다.
 
 ```yaml
+version: "3"
+
+services:
   immich-geosync-worker:
     container_name: immich_geosync_worker
     image: lscya84/immich-geosync:latest
     restart: always
     volumes:
+      # 독립된 폴더일 경우 절대 경로로 매핑(예: /docker/immich/.env)하거나, 현재 폴더의 .env를 마운트합니다.
       - ./.env:/app/.env:ro
     environment:
-      - DB_HOSTNAME=immich_postgres
-    depends_on:
-      - immich-postgres
+      - DB_HOSTNAME=immich_postgres # Immich DB 서비스명과 통일
+    networks:
+      - immich-network # Immich 컨테이너들이 사용하는 외부 네트워크와 통합
 
   immich-geosync-admin:
     container_name: immich_geosync_admin
@@ -95,21 +98,28 @@ UPLOAD_LOCATION=/path/to/immich/upload
       - "3030:3030"
     volumes:
       - ./.env:/app/.env
-      - ${UPLOAD_LOCATION}:/usr/src/app/upload:ro
+      # Immich의 업로드 디렉터리(사진 물리 파일 경로)를 매핑해 줍니다.
+      - /path/to/immich/upload:/usr/src/app/upload:ro
     environment:
       - DB_HOSTNAME=immich_postgres
       - ADMIN_PORT=${ADMIN_PORT:-3030}
       - ADMIN_ENV_PATH=/app/.env
       - UPLOAD_LOCATION=/usr/src/app/upload
-    depends_on:
-      - immich-postgres
+    networks:
+      - immich-network
+
+networks:
+  # 이미 실행 중인 Immich 도커 네트워크가 있는 경우, external 옵션을 활성화하여 그 안에 동적으로 가입시킵니다.
+  immich-network:
+    name: immich_default # 또는 immich_immich-network 등 사용자의 실제 네트워크 이름을 적어주세요.
+    external: true
 ```
 
 ### 3) 일괄 기동 및 접속
 도커 컴포즈 명령을 활용해 **한 번의 입력으로 모든 프로세스를 한 번에 기동**할 수 있습니다.
 
 ```bash
-# 전체 구성요소(기존 Immich + GeoSync) 일괄 백그라운드 시작
+# 전체 구성요소 일괄 백그라운드 시작
 docker compose up -d
 ```
 
