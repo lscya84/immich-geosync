@@ -8,20 +8,38 @@ Immich 사진의 대한민국 위치 정보를 한국어 주소로 보정하고,
 
 ---
 
-## 🏗️ 시스템 아키텍처
+## 🏗️ 시스템 아키텍처 및 상세 작동 원리
 
-이 프로젝트는 하나의 코드베이스에서 두 개의 고유 컨테이너로 역할을 분할하여 구동합니다.
+이 프로젝트는 하나의 코드베이스에서 두 개의 고유 컨테이너로 역할을 분할하여 구동합니다. 두 서비스는 같은 Immich PostgreSQL 데이터베이스와 공유 `.env` 환경 변수 설정을 마운트하여 긴밀하게 협업합니다.
 
-1. **`immich-geosync-worker` (보정 워커):** `updater.js`를 통해 DB에 저장된 사진 위경도 좌표를 분석하여 국내 주소(VWorld, Naver)로 변환/보정합니다.
-2. **`immich-geosync-admin` (관리자 웹):** `admin-server.js`를 구동하여 브라우저 환경에서 지도 클러스터링 편집, 실시간 워커 관제, 환경 설정을 지원합니다.
+### 🧩 1. `immich-geosync-worker` (보정 워커)
+`updater.js` 엔진을 통해 백그라운드에서 주기적으로 데이터베이스를 전수조사하여 무주소 좌표들을 보정합니다. API 트래픽을 최소화하기 위한 **3단계 공간 지능형 파이프라인**을 제공합니다.
 
-두 서비스는 같은 Immich PostgreSQL 데이터베이스와 공유 `.env` 환경 변수 설정을 마운트하여 긴밀하게 협업합니다.
+* **1단계: 대상 추출**
+  * 대한민국 경위도 영역(`latitude` 33~43, `longitude` 124~132)에 포함된 사진들 중 아직 한글 주소(`city`, `state` 등)가 채워지지 않았거나 누락된 대상을 선별합니다. (옵션 `--force` 실행 시 전체 전수 재보정 가능)
+* **2단계: DBSCAN 기반 공간 클러스터링**
+  * 사진 한 장마다 API를 쏘는 낭비를 원천 차단하기 위해 설정한 반경(기본값 `15m`) 내의 인접 사진들을 하나의 공간 클러스터(Cluster)로 묶어 중심점(Centroid) 좌표를 구합니다.
+* **3단계: 지능형 3-Track 주소 업데이트**
+  * **Override Track (수동 규칙):** 구한 중심 좌표가 관리자가 지도 위에 그린 커스텀 다각형(Polygon Rule) 구역 안에 속하면 API 호출 없이 사용자가 수동 설정한 건물명/주소로 일괄 자동 할당합니다.
+  * **Fast Track (로컬 고속 캐시):** 이미 분석했던 클러스터는 DB/메모리 하이브리드 캐시 테이블(`custom_naver_geocode_cache`)에 보관되어 단 0.001초 만에 캐시 데이터로 일괄 갱신 처리됩니다.
+  * **API Track (실시간 역지오코딩):** 캐시에 없는 새로운 좌표만 정밀 매핑하여 **VWorld API** 및 **NAVER Maps API**를 순차 탐색하여 정확한 한국어 법정동 및 도로명 주소를 수집/저장합니다.
+  * **Negative Cache (실패 방지 캐시):** 지리적 예외로 역지오코딩 결과가 존재하지 않는 좌표군은 실패 캐시(`not_found`)로 격리하여 무의미한 유료 API 낭비를 사전에 자동 차단합니다.
+
+### 🗺️ 2. `immich-geosync-admin` (클러스터 맵 에디터 & 웹 어드민)
+`admin-server.js`로 브라우저 운영 제어 환경을 제공하며, 네이버 지도 API와 연동된 완전한 지도 시각화 제어 도구를 구현합니다.
+
+* **폴리곤 맵 에디터 (Override Polygon Editor)**
+  * 지도(네이버 지도 백그라운드) 위에서 원하는 범위(아파트, 학교, 내 집, 캠핑장 등)를 마우스로 직접 다각형으로 그리고 명칭과 우선순위를 부여할 수 있습니다.
+  * 이 범주 안의 모든 사진들은 외부 Geocoding 결과에 상관없이 해당 주소와 사용자 커스텀 장소명(예: `우리 집`, `가평 OO 캠핑장`)으로 무조건 강제 매핑됩니다.
+* **워커 실시간 실황 관제 (Live Monitor)**
+  * 워커의 동작 상태, DB 연결 성공율, 처리 진행률(진행 비율 %)을 실시간으로 추적합니다.
+  * 하단에 일체형으로 빌드된 웹 터미널 창을 통해 최신 분석 로그가 실시간 오토 스크롤되며 자동 새로고침(10초 주기 온오프), 클립보드 복사, 텍스트 파일로 전체 다운로드 기능 등을 지원합니다.
 
 ---
 
 ## ⚙️ 스마트한 환경 설정 (Web UI 지원)
 
-기존 서버의 `.env` 텍스트 파일을 직접 수정할 필요 없이, **Admin Web의 '설정' 탭**에서 직접 주요 변수들을 조절할 수 있습니다.
+기존 서버의 `.env` 텍스트 파일을 직접 수정할 필요 없이, **Admin Web의 '설정' 탭**에서 주요 구동 설정 변수들을 안전하게 조절할 수 있습니다.
 
 * **완벽한 보안 마스킹:** VWorld API Key, NAVER Client ID/Secret 등 민감 정보는 UI 상에서 마스킹(`****`) 처리되어 가려집니다. 값을 비워둔 채 저장하면 기존 설정 값을 안전하게 보존합니다.
 * **입력값 유효성 검증:** 시간 주기, 반경 미터(m) 값 등은 엔진에서 안전하게 정수 형식 등으로 사전 검증 후 저장하므로 파일 손상 위험이 없습니다.
@@ -48,13 +66,13 @@ docker compose restart immich-geosync-worker immich-geosync-admin
 DB_HOSTNAME=immich_postgres
 DB_PORT=5432
 DB_USERNAME=postgres
-DB_PASSWORD=your_db_password_here
+DB_PASSWORD=your_d…here
 DB_DATABASE_NAME=immich
 
 # 국내 역지오코딩 API 설정
-VWORLD_API_KEY=your_vworld_api_key_here
+VWORLD_API_KEY=your_v…here
 NAVER_CLIENT_ID=your_naver_client_id_here
-NAVER_CLIENT_SECRET=your_naver_client_secret_here
+NAVER_CLIENT_SECRET=your_n…here
 
 # 동작 제어 설정
 INTERVAL_HOURS=24
