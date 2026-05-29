@@ -23,6 +23,8 @@ const {
   updateClusterAddress,
   updateClusterCoordinates,
   mergeCoordinateClusters,
+  listClusterGeocodeCaches,
+  updateClusterGeocodeCache,
   getWorkerStatus,
   getAssetPreviewPath,
   getAssetThumbnailPath,
@@ -459,6 +461,30 @@ app.put('/api/clusters/coordinates', async (req, res) => {
       nextLatitude: req.body?.nextLatitude,
       nextLongitude: req.body?.nextLongitude,
     });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/clusters/cache', async (req, res) => {
+  try {
+    res.json({ caches: await listClusterGeocodeCaches() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/clusters/cache/:cacheKey', async (req, res) => {
+  try {
+    const result = await updateClusterGeocodeCache({
+      cacheKey: req.params.cacheKey,
+      state: req.body?.state,
+      city: req.body?.city,
+      status: req.body?.status,
+      failureReason: req.body?.failureReason,
+    });
+    if (!result) return res.status(404).json({ error: '캐시 항목을 찾을 수 없습니다.' });
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });

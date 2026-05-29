@@ -16,6 +16,7 @@
       <aside class="sidebar" id="sidebar">
         <nav class="app-nav" aria-label="관리자 메뉴">
           <button class="app-nav-button is-active" type="button" data-view-target="map">클러스터 맵 에디터</button>
+          <button class="app-nav-button" type="button" data-view-target="cache">클러스터 캐시 에디터</button>
           <button class="app-nav-button" type="button" data-view-target="worker">워커상태</button>
           <button class="app-nav-button" type="button" data-view-target="settings">설정</button>
         </nav>
@@ -67,6 +68,40 @@
                 </aside>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section id="view-cache" class="workspace-view" data-view="cache">
+          <div class="workspace-page">
+            <div class="view-heading">
+              <h1>클러스터 캐시 에디터</h1>
+              <p class="muted">워커 캐시에 저장된 주소 매핑을 조회하고 수정합니다.</p>
+            </div>
+            <section class="panel-section is-open" data-section="cache-list">
+              <div class="section-header">
+                <strong>캐시 목록</strong>
+                <button id="refresh-cache" type="button">새로고침</button>
+              </div>
+              <div class="panel-section-body">
+                <div id="cache-status" class="muted">캐시 목록을 불러오는 중입니다.</div>
+                <div class="cache-table-wrap">
+                  <table class="cache-table">
+                    <thead>
+                      <tr>
+                        <th>cache_key</th>
+                        <th>state</th>
+                        <th>city</th>
+                        <th>status</th>
+                        <th>failure_reason</th>
+                        <th>updated_at</th>
+                        <th>작업</th>
+                      </tr>
+                    </thead>
+                    <tbody id="cache-table-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
           </div>
         </section>
 

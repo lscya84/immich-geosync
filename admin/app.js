@@ -51,6 +51,9 @@ const workerLogs = document.getElementById('worker-logs');
 const settingsForm = document.getElementById('settings-form');
 const saveSettingsButton = document.getElementById('save-settings');
 const settingsStatus = document.getElementById('settings-status');
+const refreshCacheButton = document.getElementById('refresh-cache');
+const cacheStatus = document.getElementById('cache-status');
+const cacheTableBody = document.getElementById('cache-table-body');
 const navButtons = Array.from(document.querySelectorAll('[data-view-target]'));
 const workspaceViews = Array.from(document.querySelectorAll('[data-view]'));
 
@@ -103,6 +106,12 @@ function setActiveView(viewName) {
     loadSettings().catch((error) => {
       console.error(error);
       if (settingsStatus) settingsStatus.textContent = error.message || '환경 설정을 불러오지 못했습니다.';
+    });
+  }
+  if (viewName === 'cache') {
+    loadClusterCacheList().catch((error) => {
+      console.error(error);
+      if (cacheStatus) cacheStatus.textContent = error.message || '캐시 목록을 불러오지 못했습니다.';
     });
   }
 }
@@ -1727,6 +1736,113 @@ async function loadSettings() {
   renderSettings(await fetchJson('/api/admin/settings'));
 }
 
+function formatUpdatedAt(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('ko-KR');
+}
+
+function renderClusterCacheList(caches = []) {
+  if (!cacheTableBody) return;
+  cacheTableBody.innerHTML = '';
+
+  if (!Array.isArray(caches) || !caches.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 7;
+    td.className = 'muted';
+    td.textContent = '캐시 데이터가 없습니다.';
+    tr.appendChild(td);
+    cacheTableBody.appendChild(tr);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  caches.forEach((item) => {
+    const tr = document.createElement('tr');
+
+    const keyTd = document.createElement('td');
+    const keyCode = document.createElement('code');
+    keyCode.textContent = item.cacheKey || '';
+    keyTd.appendChild(keyCode);
+    tr.appendChild(keyTd);
+
+    const stateTd = document.createElement('td');
+    const stateInput = document.createElement('input');
+    stateInput.type = 'text';
+    stateInput.value = item.state || '';
+    stateTd.appendChild(stateInput);
+    tr.appendChild(stateTd);
+
+    const cityTd = document.createElement('td');
+    const cityInput = document.createElement('input');
+    cityInput.type = 'text';
+    cityInput.value = item.city || '';
+    cityTd.appendChild(cityInput);
+    tr.appendChild(cityTd);
+
+    const statusTd = document.createElement('td');
+    const statusInput = document.createElement('input');
+    statusInput.type = 'text';
+    statusInput.value = item.status || '';
+    statusTd.appendChild(statusInput);
+    tr.appendChild(statusTd);
+
+    const failureTd = document.createElement('td');
+    const failureInput = document.createElement('input');
+    failureInput.type = 'text';
+    failureInput.value = item.failureReason || '';
+    failureTd.appendChild(failureInput);
+    tr.appendChild(failureTd);
+
+    const updatedTd = document.createElement('td');
+    updatedTd.textContent = formatUpdatedAt(item.updatedAt);
+    tr.appendChild(updatedTd);
+
+    const actionTd = document.createElement('td');
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'cache-save-button';
+    saveButton.textContent = '저장';
+    saveButton.addEventListener('click', async () => {
+      saveButton.disabled = true;
+      saveButton.textContent = '저장 중...';
+      try {
+        const updated = await fetchJson(`/api/clusters/cache/${encodeURIComponent(item.cacheKey || '')}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            state: stateInput.value,
+            city: cityInput.value,
+            status: statusInput.value,
+            failureReason: failureInput.value,
+          }),
+        });
+        updatedTd.textContent = formatUpdatedAt(updated.updatedAt);
+        if (cacheStatus) cacheStatus.textContent = `저장 완료: ${updated.cacheKey}`;
+      } catch (error) {
+        if (cacheStatus) cacheStatus.textContent = error.message || '캐시 저장에 실패했습니다.';
+      } finally {
+        saveButton.disabled = false;
+        saveButton.textContent = '저장';
+      }
+    });
+    actionTd.appendChild(saveButton);
+    tr.appendChild(actionTd);
+    fragment.appendChild(tr);
+  });
+
+  cacheTableBody.appendChild(fragment);
+}
+
+async function loadClusterCacheList() {
+  if (cacheStatus) cacheStatus.textContent = '캐시 목록을 불러오는 중입니다.';
+  const data = await fetchJson('/api/clusters/cache');
+  renderClusterCacheList(data.caches || []);
+  if (cacheStatus) cacheStatus.textContent = `총 ${(data.caches || []).length}개 캐시`;
+}
+
 async function saveSettings() {
   if (!settingsForm) return;
   const settings = {};
@@ -1918,6 +2034,10 @@ function bindUiEvents() {
     console.error(error);
     if (settingsStatus) settingsStatus.textContent = error.message || '환경 설정을 저장하지 못했습니다.';
   }));
+  refreshCacheButton?.addEventListener('click', () => loadClusterCacheList().catch((error) => {
+    console.error(error);
+    if (cacheStatus) cacheStatus.textContent = error.message || '캐시 목록을 불러오지 못했습니다.';
+  }));
   document.getElementById('refresh-clusters').addEventListener('click', () => refreshClustersNow().catch((error) => {
     console.error(error);
   }));
@@ -2030,7 +2150,7 @@ async function init() {
   bindUiEvents();
   await loadNaverMapsScript();
   initializeMap();
-  await Promise.all([loadRules(), refreshClustersNow(), loadWorkerSnapshot(), loadSettings()]);
+  await Promise.all([loadRules(), refreshClustersNow(), loadWorkerSnapshot(), loadSettings(), loadClusterCacheList()]);
 }
 
 init().catch((error) => {

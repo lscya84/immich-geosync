@@ -781,6 +781,57 @@ button:disabled {
   gap: 8px;
 }
 
+.cache-table-wrap {
+  margin-top: 10px;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.cache-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 960px;
+  font-size: 13px;
+}
+
+.cache-table th,
+.cache-table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.cache-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f9fafb;
+  color: #374151;
+}
+
+.cache-table td code {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cache-table input {
+  margin-top: 0;
+  min-width: 120px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.cache-table .cache-save-button {
+  margin-top: 0;
+  width: auto;
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
 .worker-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
