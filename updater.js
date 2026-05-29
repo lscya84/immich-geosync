@@ -119,6 +119,14 @@ function buildClusterKey(lat, lon, radiusMeters = 15) {
     return `${parseFloat(lat).toFixed(5)}_${parseFloat(lon).toFixed(5)}_${radiusMeters}`;
 }
 
+function getGeoCacheKeyForCluster(cluster) {
+    if (cluster?.geoCacheKey) return cluster.geoCacheKey;
+    if (Number.isFinite(cluster?.centroidLat) && Number.isFinite(cluster?.centroidLon)) {
+        return buildClusterKey(cluster.centroidLat, cluster.centroidLon, config.clusterRadiusMeters);
+    }
+    return cluster?.clusterKey;
+}
+
 function setMemoryCache(cacheKey, value, enforceLimit = true) {
     if (enforceLimit && addressCache.size >= MAX_CACHE_SIZE) {
         const firstKey = addressCache.keys().next().value;
@@ -210,8 +218,10 @@ function isNotFoundDiagnostics(diagnostics) {
 }
 
 async function getClusterAddress(client, cluster) {
-    if (addressCache.has(cluster.clusterKey)) {
-        const cached = addressCache.get(cluster.clusterKey);
+    const cacheKey = getGeoCacheKeyForCluster(cluster);
+
+    if (addressCache.has(cacheKey)) {
+        const cached = addressCache.get(cacheKey);
         if (cached.status === 'not_found') {
             return {
                 address: null,
@@ -266,9 +276,9 @@ async function getClusterAddress(client, cluster) {
                 status: 'not_found',
                 failureReason: 'not-found',
             };
-            setMemoryCache(cluster.clusterKey, negativeCache);
+            setMemoryCache(cacheKey, negativeCache);
             try {
-                await upsertCache(client, cluster.clusterKey, negativeCache);
+                await upsertCache(client, cacheKey, negativeCache);
             } catch (e) {}
             return { address: null, diagnostics, cacheStatus: 'not_found' };
         }
@@ -277,9 +287,9 @@ async function getClusterAddress(client, cluster) {
 
     address.status = 'success';
     address.failureReason = '';
-    setMemoryCache(cluster.clusterKey, address);
+    setMemoryCache(cacheKey, address);
     try {
-        await upsertCache(client, cluster.clusterKey, address);
+        await upsertCache(client, cacheKey, address);
     } catch (e) {}
 
     return { address, diagnostics: result?.diagnostics || null, cacheStatus: 'success' };
@@ -397,6 +407,7 @@ function clusterRows(rows, radiusMeters, clusterGroups = []) {
     for (const cluster of groupedMap.values()) {
         cluster.centroidLat /= cluster.assetCount;
         cluster.centroidLon /= cluster.assetCount;
+        cluster.geoCacheKey = buildClusterKey(cluster.centroidLat, cluster.centroidLon, radiusMeters);
         clusters.push(cluster);
     }
 
@@ -423,6 +434,7 @@ function clusterRows(rows, radiusMeters, clusterGroups = []) {
         clusters.push({
             clusterId: randomUUID(),
             clusterKey: buildClusterKey(centroidLat, centroidLon, radiusMeters),
+            geoCacheKey: buildClusterKey(centroidLat, centroidLon, radiusMeters),
             centroidLat,
             centroidLon,
             assetCount: clusterItems.length,
@@ -565,15 +577,30 @@ async function main(forceUpdate = false) {
         const fastTrackClusters = [];
         const negativeCacheClusters = [];
         const apiTrackClusters = [];
+        const overrideCacheFillClusters = [];
+        let overrideCacheWarmHits = 0;
+        let overrideCacheWarmMisses = 0;
+        let overrideCacheWarmNotFound = 0;
 
         for (const cluster of clusters) {
             const overrideRule = findMatchingRule(cluster.centroidLat, cluster.centroidLon, overrideRules);
+            const cacheKey = getGeoCacheKeyForCluster(cluster);
+            const cached = addressCache.get(cacheKey);
+
             if (overrideRule) {
-                overrideClusters.push({ ...cluster, overrideRule, overrideAddress: buildRuleAddress(overrideRule) });
+                overrideClusters.push({ ...cluster, overrideRule, overrideAddress: buildRuleAddress(overrideRule), cacheKey });
+
+                if (!cached) {
+                    overrideCacheFillClusters.push(cluster);
+                    overrideCacheWarmMisses++;
+                } else if (cached.status === 'not_found') {
+                    overrideCacheWarmNotFound++;
+                } else {
+                    overrideCacheWarmHits++;
+                }
                 continue;
             }
 
-            const cached = addressCache.get(cluster.clusterKey);
             if (!cached) {
                 apiTrackClusters.push(cluster);
             } else if (cached.status === 'not_found') {
@@ -588,13 +615,14 @@ async function main(forceUpdate = false) {
         const negativeCachePhotos = negativeCacheClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
         const apiTrackPhotos = apiTrackClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
 
-        console.log(`[${nowKst()}] 🧭 대상 분류 완료`);
+        console.log(`[${nowKst()}] 🧭 대상 분류 완료 (적용 우선순위: polygon > cache > api)`);
         console.log(` ├─ 전체 사진: ${res.rows.length}건`);
         console.log(` ├─ 전체 클러스터: ${clusters.length}개`);
-        console.log(` ├─ Override Track: ${overrideClusters.length}개 클러스터 / ${overridePhotos}장`);
-        console.log(` ├─ Fast Track: ${fastTrackClusters.length}개 클러스터 / ${fastTrackPhotos}장`);
-        console.log(` ├─ Negative Cache: ${negativeCacheClusters.length}개 클러스터 / ${negativeCachePhotos}장`);
-        console.log(` └─ API Track: ${apiTrackClusters.length}개 클러스터 / ${apiTrackPhotos}장`);
+        console.log(` ├─ Polygon 적용 대상: ${overrideClusters.length}개 클러스터 / ${overridePhotos}장`);
+        console.log(` │  └─ Polygon 대상 캐시 상태: hit ${overrideCacheWarmHits} / miss ${overrideCacheWarmMisses} / not_found ${overrideCacheWarmNotFound}`);
+        console.log(` ├─ Cache 즉시 반영 대상: ${fastTrackClusters.length}개 클러스터 / ${fastTrackPhotos}장`);
+        console.log(` ├─ Cache not_found 보류: ${negativeCacheClusters.length}개 클러스터 / ${negativeCachePhotos}장`);
+        console.log(` └─ Cache miss(API 조회 필요): ${apiTrackClusters.length}개 클러스터 / ${apiTrackPhotos}장`);
 
         let totalUpdated = 0;
         let overrideUpdated = 0;
@@ -610,9 +638,30 @@ async function main(forceUpdate = false) {
         let apiProcessedClusters = 0;
         let apiProcessedPhotos = 0;
         const totalPhotos = apiTrackPhotos;
+        let overrideCacheFilledSuccess = 0;
+        let overrideCacheFilledNotFound = 0;
+        let overrideCacheFilledMiss = 0;
+
+        if (overrideCacheFillClusters.length > 0) {
+            console.log(`[${nowKst()}] 🧱 Polygon 대상 캐시 보강 시작: ${overrideCacheFillClusters.length}개 클러스터`);
+            for (const cluster of overrideCacheFillClusters) {
+                const { address, cacheStatus } = await getClusterAddress(client, cluster);
+                if (address) {
+                    overrideCacheFilledSuccess++;
+                } else if (cacheStatus === 'not_found') {
+                    overrideCacheFilledNotFound++;
+                } else {
+                    overrideCacheFilledMiss++;
+                }
+                if (address?.source === 'api') {
+                    await sleep(config.delay);
+                }
+            }
+            console.log(`[${nowKst()}] ✅ Polygon 대상 캐시 보강 완료: success ${overrideCacheFilledSuccess}, not_found ${overrideCacheFilledNotFound}, miss ${overrideCacheFilledMiss}`);
+        }
 
         if (overrideClusters.length > 0) {
-            console.log(`[${nowKst()}] 🧷 Override Phase 시작: 수동 rule 적용 (${overrideClusters.length}개 / ${overridePhotos}장)`);
+            console.log(`[${nowKst()}] 🧷 Polygon Phase 시작: 수동 rule 적용 (${overrideClusters.length}개 / ${overridePhotos}장)`);
             const overrideItems = [];
             for (const cluster of overrideClusters) {
                 const overrideAddress = cluster.overrideRule.treatAsSingleCluster === true
@@ -631,17 +680,17 @@ async function main(forceUpdate = false) {
             }
             overrideUpdated = await bulkUpdateAssets(client, overrideItems);
             totalUpdated += overrideUpdated;
-            console.log(`[${nowKst()}] ✅ Override Phase 완료: ${overrideUpdated}건 반영`);
+            console.log(`[${nowKst()}] ✅ Polygon Phase 완료: ${overrideUpdated}건 반영`);
         }
 
-        console.log(`[${nowKst()}] ⚡ Phase 1 시작: 캐시 적중 클러스터 고속 처리 (${fastTrackClusters.length}개 / ${fastTrackPhotos}장)`);
+        console.log(`[${nowKst()}] ⚡ Cache Phase 시작: 캐시 적중 클러스터 반영 (${fastTrackClusters.length}개 / ${fastTrackPhotos}장)`);
 
         for (let i = 0; i < fastTrackClusters.length; i += FAST_TRACK_CHUNK_SIZE) {
             const chunk = fastTrackClusters.slice(i, i + FAST_TRACK_CHUNK_SIZE);
             const updateItems = [];
 
             for (const cluster of chunk) {
-                const cached = addressCache.get(cluster.clusterKey);
+                const cached = addressCache.get(getGeoCacheKeyForCluster(cluster));
                 if (!cached) continue;
                 for (const assetId of cluster.assetIds) {
                     updateItems.push({ assetId, state: cached.state, city: cached.city });
@@ -657,14 +706,14 @@ async function main(forceUpdate = false) {
 
             if (fastPrepared % FAST_TRACK_LOG_INTERVAL === 0 || fastPrepared === fastTrackPhotos) {
                 const ratio = fastTrackPhotos ? ((fastPrepared / fastTrackPhotos) * 100).toFixed(1) : '100.0';
-                console.log(`[${nowKst()}] ⚡ Fast Track 진행: ${fastPrepared}/${fastTrackPhotos}장 (${ratio}%) 처리, DB 반영 ${fastTrackUpdated}건`);
+                console.log(`[${nowKst()}] ⚡ Cache Phase 진행: ${fastPrepared}/${fastTrackPhotos}장 (${ratio}%) 처리, DB 반영 ${fastTrackUpdated}건`);
             }
         }
 
-        console.log(`[${nowKst()}] ✅ Phase 1 완료: ${fastTrackUpdated}건 반영`);
+        console.log(`[${nowKst()}] ✅ Cache Phase 완료: ${fastTrackUpdated}건 반영`);
 
         if (apiTrackClusters.length > 0) {
-            console.log(`[${nowKst()}] 🌐 Phase 2 시작: 미확인 클러스터 API 처리 (${apiTrackClusters.length}개 / ${apiTrackPhotos}장)`);
+            console.log(`[${nowKst()}] 🌐 API Phase 시작: 캐시 미스 클러스터 조회/반영 (${apiTrackClusters.length}개 / ${apiTrackPhotos}장)`);
 
             for (const cluster of apiTrackClusters) {
                 apiProcessedClusters++;
@@ -688,14 +737,14 @@ async function main(forceUpdate = false) {
                     apiFailedClusters++;
                     if (apiFailureLogCount < API_FAILURE_LOG_LIMIT) {
                         apiFailureLogCount++;
-                        console.warn(`[${nowKst()}] ⚠️ API Track 실패 샘플 ${apiFailureLogCount}/${API_FAILURE_LOG_LIMIT}: clusterKey=${cluster.clusterKey}, vworld=${diagnostics?.vworld?.reason || 'none'}${diagnostics?.vworld?.statusCode ? `(${diagnostics.vworld.statusCode})` : ''}, naver=${diagnostics?.naver?.reason || 'none'}${diagnostics?.naver?.statusCode ? `(${diagnostics.naver.statusCode})` : ''}`);
+                        console.warn(`[${nowKst()}] ⚠️ API Phase 실패 샘플 ${apiFailureLogCount}/${API_FAILURE_LOG_LIMIT}: clusterKey=${cluster.clusterKey}, vworld=${diagnostics?.vworld?.reason || 'none'}${diagnostics?.vworld?.statusCode ? `(${diagnostics.vworld.statusCode})` : ''}, naver=${diagnostics?.naver?.reason || 'none'}${diagnostics?.naver?.statusCode ? `(${diagnostics.naver.statusCode})` : ''}`);
                     }
                 }
 
                 if (apiProcessedClusters <= 3 || apiProcessedClusters % API_TRACK_LOG_INTERVAL === 0 || apiProcessedClusters === apiTrackClusters.length) {
                     const clusterRatio = apiTrackClusters.length ? ((apiProcessedClusters / apiTrackClusters.length) * 100).toFixed(1) : '100.0';
                     const photoRatio = totalPhotos ? ((apiProcessedPhotos / totalPhotos) * 100).toFixed(1) : '100.0';
-                    console.log(`[${nowKst()}] 🌐 API Track 진행: 클러스터 ${apiProcessedClusters}/${apiTrackClusters.length} (${clusterRatio}%), 사진 ${apiProcessedPhotos}/${totalPhotos} (${photoRatio}%), API 시도 ${apiAttemptedClusters}, API 성공 ${apiCallCount}, DB 반영 ${apiTrackUpdated}, 실패 ${apiFailedClusters}`);
+                    console.log(`[${nowKst()}] 🌐 API Phase 진행: 클러스터 ${apiProcessedClusters}/${apiTrackClusters.length} (${clusterRatio}%), 사진 ${apiProcessedPhotos}/${totalPhotos} (${photoRatio}%), API 시도 ${apiAttemptedClusters}, API 성공 ${apiCallCount}, DB 반영 ${apiTrackUpdated}, 실패 ${apiFailedClusters}`);
                 }
 
                 if (address?.source === 'api') {
@@ -703,23 +752,28 @@ async function main(forceUpdate = false) {
                 }
             }
 
-            console.log(`[${nowKst()}] ✅ Phase 2 완료: ${apiTrackUpdated}건 반영`);
+            console.log(`[${nowKst()}] ✅ API Phase 완료: ${apiTrackUpdated}건 반영`);
         }
         console.log(`[${nowKst()}] 🎉 작업 완료 상세 리포트`);
         console.log(` ┌─ 캐시 워밍업 적재: ${warmedCount}건`);
         console.log(` ├─ 총 클러스터 수: ${clusters.length}개`);
-        console.log(` ├─ Override Track 클러스터: ${overrideClusters.length}개`);
-        console.log(` ├─ Fast Track 클러스터: ${fastTrackClusters.length}개`);
-        console.log(` ├─ Negative Cache 클러스터: ${negativeCacheSkippedClusters}개`);
-        console.log(` ├─ API Track 클러스터: ${apiTrackClusters.length}개`);
-        console.log(` ├─ Override 반영: ${overrideUpdated}건`);
-        console.log(` ├─ Fast Track 반영: ${fastTrackUpdated}건`);
-        console.log(` ├─ Negative Cache 스킵 사진: ${negativeCacheSkippedPhotos}건`);
-        console.log(` ├─ API Track 반영: ${apiTrackUpdated}건`);
+        console.log(` ├─ Polygon 적용 클러스터: ${overrideClusters.length}개`);
+        console.log(` ├─ Polygon 대상 캐시 hit/miss/not_found: ${overrideCacheWarmHits}/${overrideCacheWarmMisses}/${overrideCacheWarmNotFound}`);
+        console.log(` ├─ Polygon 대상 캐시 보강 success/not_found/miss: ${overrideCacheFilledSuccess}/${overrideCacheFilledNotFound}/${overrideCacheFilledMiss}`);
+        console.log(` ├─ Cache 즉시 반영 클러스터: ${fastTrackClusters.length}개`);
+        console.log(` ├─ Cache not_found 보류 클러스터: ${negativeCacheSkippedClusters}개`);
+        console.log(` ├─ API 조회 대상 클러스터: ${apiTrackClusters.length}개`);
+        console.log(` ├─ Polygon 반영: ${overrideUpdated}건`);
+        console.log(` ├─ Cache 반영: ${fastTrackUpdated}건`);
+        console.log(` ├─ Cache not_found 보류 사진: ${negativeCacheSkippedPhotos}건`);
+        console.log(` ├─ API 반영: ${apiTrackUpdated}건`);
         console.log(` ├─ API 시도 클러스터: ${apiAttemptedClusters}개`);
         console.log(` ├─ 실제 VWorld/Naver 성공 클러스터: ${apiCallCount}개`);
         console.log(` ├─ API 실패 클러스터: ${apiFailedClusters}개`);
         console.log(` └─ 총 DB 반영: ${totalUpdated}건`);
+        if (totalUpdated === 0 && negativeCacheSkippedPhotos > 0) {
+            console.log(`[${nowKst()}] ℹ️ DB 반영 0건은 정상일 수 있습니다. 이번 배치는 cache not_found 보류 사진(${negativeCacheSkippedPhotos}건)만 포함되어 최종 반영이 생략되었습니다.`);
+        }
         await finishWorkerRun(client, {
             id: activeRunId,
             status: 'completed',
