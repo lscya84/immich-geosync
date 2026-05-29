@@ -70,6 +70,8 @@ Admin 설정 API는 `ADMIN_ENV_PATH`의 파일을 직접 읽고 쓴다. 운영 �
 docker compose restart immich-geosync-worker immich-geosync-admin
 ```
 
+설정 저장을 완료한 후 반영하는 프로세스는 `docker compose restart <서비스명>`을 통해 간편하게 제어 가능하며, 모든 서비스를 내렸다 올릴 필요 없이 무중단으로 신속하게 반영할 수 있습니다.
+
 ## UI Structure
 
 - Header: `Immich GeoSync Admin` 이름과 모바일 메뉴 버튼
@@ -100,6 +102,8 @@ docker compose restart immich-geosync-worker immich-geosync-admin
 - Admin URL: `http://openclaw:3030/admin/`
 - Host port: `3030`
 - Container port: `3030`
+
+일괄 실행 시에는 `docker compose up -d` 명령어 하나로 Immich 서비스 그룹 전체를 통합하여 즉시 백업/운영 상태로 전환할 수 있습니다.
 
 ## Test Plan
 

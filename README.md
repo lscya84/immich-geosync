@@ -1,77 +1,49 @@
 # Immich GeoSync
 
-Immich 사진의 대한민국 위치 정보를 한국어 주소로 보정하고, 반복 보정이 필요한 좌표 클러스터를 Admin UI에서 관리하는 **worker + admin 통합 레포**입니다.
+Immich 사진의 대한민국 위치 정보를 한국어 주소로 보정하고, 반복 보정이 필요한 좌표 클러스터를 Admin UI에서 편리하게 관리하는 **worker + admin 통합 모듈**입니다.
 
 - GitHub: https://github.com/lscya84/immich-geosync
 - Docker Hub: https://hub.docker.com/r/lscya84/immich-geosync
 - Releases: https://github.com/lscya84/immich-geosync/releases
 
-## 현재 구조
+---
 
-이 레포는 하나의 코드베이스에서 두 컨테이너를 분리해 실행합니다.
+## 🏗️ 시스템 아키텍처
 
-- `immich-geosync-worker`: `updater.js`를 실행하는 실제 보정 워커
-- `immich-geosync-admin`: `admin-server.js`를 실행하는 관리자 UI/API
+이 프로젝트는 하나의 코드베이스에서 두 개의 고유 컨테이너로 역할을 분할하여 구동합니다.
 
-두 컨테이너는 같은 PostgreSQL과 같은 `.env` 파일을 사용합니다. 운영에서는 보통 Immich compose 루트의 `.env`를 두 컨테이너에 마운트합니다.
+1. **`immich-geosync-worker` (보정 워커):** `updater.js`를 통해 DB에 저장된 사진 위경도 좌표를 분석하여 국내 주소(VWorld, Naver)로 변환/보정합니다.
+2. **`immich-geosync-admin` (관리자 웹):** `admin-server.js`를 구동하여 브라우저 환경에서 지도 클러스터링 편집, 실시간 워커 관제, 환경 설정을 지원합니다.
+
+두 서비스는 같은 Immich PostgreSQL 데이터베이스와 공유 `.env` 환경 변수 설정을 마운트하여 긴밀하게 협업합니다.
 
 ```text
 /docker/immich/.env
-  ├─ immich-geosync-worker: /app/.env:ro
-  └─ immich-geosync-admin:  /app/.env:rw
+  ├─ immich-geosync-worker (읽기 전용 마운트: /app/.env:ro)
+  └─ immich-geosync-admin  (읽기/쓰기 마운트: /app/.env)
 ```
 
-Admin 설정 페이지는 `ADMIN_ENV_PATH`가 가리키는 파일을 직접 수정합니다. 운영 기본값은 `/app/.env`입니다.
+---
 
-## 기능
+## ⚙️ 스마트한 환경 설정 (Web UI 지원)
 
-### Worker
+기존 서버의 `.env` 텍스트 파일을 직접 수정할 필요 없이, **Admin Web의 '설정' 탭**에서 직접 주요 변수들을 조절할 수 있습니다.
 
-- VWorld 우선, Naver 보조, mapping fallback 기반 역지오코딩
-- 좌표 클러스터 단위 처리
-- PostgreSQL 캐시와 negative cache 사용
-- polygon override rule, single-cluster group 우선 적용
-- worker 실행 상태, 최근 실행 기록, 로그를 DB에 저장
+* **완벽한 보안 마스킹:** VWorld API Key, NAVER Client ID/Secret 등 민감 정보는 UI 상에서 마스킹(`****`) 처리되어 가려집니다. 값을 비워둔 채 저장하면 기존 설정 값을 안전하게 보존합니다.
+* **입력값 유효성 검증:** 시간 주기, 반경 미터(m) 값 등은 엔진에서 안전하게 정수 형식 등으로 사전 검증 후 저장하므로 파일 손상 위험이 없습니다.
+* **반영 기준:** 설정을 Web UI에서 변경/저장한 뒤 아래의 재기동 명령을 수행하면 새로운 설정이 런타임에 완벽히 적용됩니다.
 
-### Admin
+```bash
+# Web UI에서 설정을 저장한 후 적용을 위해 두 컨테이너를 함께 재기동합니다.
+docker compose restart immich-geosync-worker immich-geosync-admin
+```
 
-- 클러스터 맵 에디터
-- polygon rule 생성, 수정, 삭제
-- single-cluster group 생성, 삭제
-- rule/group 영향 범위 미리보기와 DB 반영
-- worker 상태와 작동 로그 조회
-- worker 로그 최신 위치 자동 스크롤
-- worker 로그 자동 새로고침, 복사, 다운로드
-- `.env` 기반 설정 조회/수정
-- API key/secret 마스킹 표시
+---
 
-## 설정 적용 방식
+## 🚀 빠른 시작 (Quick Start)
 
-설정 페이지에서 저장하는 값은 운영 `.env` 파일에 반영됩니다. 이 파일은 worker와 admin이 함께 사용합니다.
-
-다만 Node 프로세스는 시작 시점에 `.env`를 읽습니다. 따라서 저장 후 실제 런타임 반영 기준은 아래와 같습니다.
-
-| 설정 | 저장 위치 | Worker 적용 | Admin 적용 |
-|---|---|---|---|
-| `INTERVAL_HOURS` | `.env` | worker 컨테이너 재기동 후 적용 | worker 상태 표시에는 다음 worker 실행 이후 반영 |
-| `STEP_DELAY_MS` | `.env` | worker 컨테이너 재기동 후 적용 | 직접 영향 없음 |
-| `CLUSTER_RADIUS_METERS` | `.env` | worker 컨테이너 재기동 후 적용 | admin 컨테이너 재기동 후 클러스터 조회/미리보기에 적용 |
-| `APPEND_BUILDING_NAME` | `.env` | worker 컨테이너 재기동 후 적용 | admin 컨테이너 재기동 후 중심점 주소 자동 채움에 적용 |
-| `API_TIMEOUT_MS` | `.env` | worker 컨테이너 재기동 후 적용 | admin 컨테이너 재기동 후 주소 조회 API에 적용 |
-| `NAVER_API_TIMEOUT_MS` | `.env` | worker 컨테이너 재기동 후 적용 | admin 컨테이너 재기동 후 주소 조회 API에 적용 |
-| `VWORLD_API_KEY` | `.env` | worker 컨테이너 재기동 후 적용 | admin 컨테이너 재기동 후 중심점 주소 자동 채움에 적용 |
-| `NAVER_CLIENT_ID` | `.env` | worker 컨테이너 재기동 후 적용 | admin 컨테이너 재기동 후 지도/주소 API에 적용 |
-| `NAVER_CLIENT_SECRET` | `.env` | worker 컨테이너 재기동 후 적용 | admin 컨테이너 재기동 후 주소 조회 API에 적용 |
-
-요약하면, **설정 저장은 worker/admin 공통 `.env`에 반영되지만 실제 적용은 관련 컨테이너 재기동 후 적용**됩니다. 설정 페이지의 목록은 `.env` 파일을 직접 읽기 때문에 저장 직후 새 값이 보입니다.
-
-Secret 값은 빈칸으로 저장하면 기존 값을 유지합니다.
-
-## 빠른 설치
-
-### 1) `.env` 준비
-
-Immich compose 루트의 `.env` 파일에 아래 값을 넣습니다.
+### 1) `.env` 환경 변수 준비
+Immich compose 루트의 `.env` 파일에 하단 설정을 추가합니다.
 
 ```env
 DB_HOSTNAME=immich_postgres
@@ -80,28 +52,29 @@ DB_USERNAME=postgres
 DB_PASSWORD=your_db_password_here
 DB_DATABASE_NAME=immich
 
+# 국내 역지오코딩 API 설정
 VWORLD_API_KEY=your_vworld_api_key_here
 NAVER_CLIENT_ID=your_naver_client_id_here
 NAVER_CLIENT_SECRET=your_naver_client_secret_here
 
+# 동작 제어 설정
 INTERVAL_HOURS=24
 STEP_DELAY_MS=100
 CLUSTER_RADIUS_METERS=15
-CLUSTER_YIELD_INTERVAL=1000
 APPEND_BUILDING_NAME=true
 API_TIMEOUT_MS=10000
 NAVER_API_TIMEOUT_MS=10000
-NOT_FOUND_CACHE_TTL_DAYS=30
 
+# Admin UI 포트 및 경로
 ADMIN_PORT=3030
 ADMIN_ENV_PATH=/app/.env
 UPLOAD_LOCATION=/path/to/immich/upload
 ```
 
-### 2) docker-compose 예시
+### 2) docker-compose.yml 서비스 구성
+기존 Immich `docker-compose.yml` 파일 내부의 `services` 단 하단에 아래 두 서비스를 추가합니다.
 
 ```yaml
-services:
   immich-geosync-worker:
     container_name: immich_geosync_worker
     image: lscya84/immich-geosync:latest
@@ -109,9 +82,9 @@ services:
     volumes:
       - ./.env:/app/.env:ro
     environment:
-      DB_HOSTNAME: immich_postgres
+      - DB_HOSTNAME=immich_postgres
     depends_on:
-      - immich_postgres
+      - immich-postgres
 
   immich-geosync-admin:
     container_name: immich_geosync_admin
@@ -124,88 +97,41 @@ services:
       - ./.env:/app/.env
       - ${UPLOAD_LOCATION}:/usr/src/app/upload:ro
     environment:
-      DB_HOSTNAME: immich_postgres
-      ADMIN_PORT: ${ADMIN_PORT:-3030}
-      ADMIN_ENV_PATH: /app/.env
-      UPLOAD_LOCATION: /usr/src/app/upload
+      - DB_HOSTNAME=immich_postgres
+      - ADMIN_PORT=${ADMIN_PORT:-3030}
+      - ADMIN_ENV_PATH=/app/.env
+      - UPLOAD_LOCATION=/usr/src/app/upload
     depends_on:
-      - immich_postgres
+      - immich-postgres
 ```
 
-Admin에서 설정을 수정하려면 admin 컨테이너의 `.env` 마운트는 읽기 전용(`:ro`)이 아니어야 합니다. worker 컨테이너는 읽기 전용(`:ro`)으로 두는 것을 권장합니다.
-
-## 실행
-
-### worker
+### 3) 일괄 기동 및 접속
+도커 컴포즈 명령을 활용해 **한 번의 입력으로 모든 프로세스를 한 번에 기동**할 수 있습니다.
 
 ```bash
-docker compose up -d immich-geosync-worker
+# 전체 구성요소(기존 Immich + GeoSync) 일괄 백그라운드 시작
+docker compose up -d
 ```
 
-### admin
+서비스가 정상적으로 켜졌다면 브라우저를 열고 관리 페이지로 접속합니다:
+👉 **`http://<서버IP>:3030/admin/`**
 
-```bash
-docker compose up -d immich-geosync-admin
-```
+---
 
-브라우저:
+## 🛠️ 주요 운영 명령어
 
-```text
-http://openclaw:3030/admin/
-```
-
-## 설정 변경 후 재기동
-
-Admin 설정 페이지에서 `.env`를 저장한 뒤에는 바뀐 값이 필요한 컨테이너를 재기동합니다.
-
-```bash
-docker compose restart immich-geosync-worker immich-geosync-admin
-```
-
-worker 주기, API 키, 건물명 자동 추가처럼 worker와 admin이 모두 참조하는 값은 두 컨테이너를 함께 재기동하는 것이 가장 확실합니다.
-
-## 자주 쓰는 명령
-
-### worker 로그
-
-```bash
-docker compose logs -f --tail=100 immich-geosync-worker
-```
-
-### admin 로그
-
-```bash
-docker compose logs -f --tail=100 immich-geosync-admin
-```
-
-### 기존 사진까지 전체 재처리
-
+### 워커 강제 전체 사진 전수 재처리
+기존에 이미 주소 보정이 끝난 사진들까지 완전히 새 좌표 기준으로 강제 리스캔할 때 실행합니다:
 ```bash
 docker compose exec immich-geosync-worker node updater.js --force
 ```
 
-### 캐시만 삭제 후 종료
-
+### 캐시 수동 만료 소거
 ```bash
 docker compose exec immich-geosync-worker node updater.js --clear-cache-only
 ```
 
-### 단건 좌표 확인
-
+### 개별 좌표 결과 사전 프리뷰 테스트
 ```bash
-docker compose exec immich-geosync-worker node reverse_geocode.js 35.354921 127.558729
+docker compose exec immich-geosync-worker node reverse_geocode.js 37.5665 126.9780
 ```
-
-### admin 서버 직접 실행
-
-```bash
-docker compose exec immich-geosync-admin node admin-server.js
-```
-
-## 운영 배포 메모
-
-- 운영 GitHub repo: `lscya84/immich-geosync`
-- 운영 경로 예시: `/docker/immich/immich-geosync`
-- 운영 접속 URL: `http://openclaw:3030/admin/`
-- DB 보조 테이블 이름은 기존 `custom_geo_*` 계열을 유지합니다. 프로그램명 변경과 무관하게 운영 데이터 마이그레이션 위험을 줄이기 위한 선택입니다.
-- 안정 배포용 순수 워커는 별도 레포 `immich-ko-reverse-geocoding`에 유지합니다.
