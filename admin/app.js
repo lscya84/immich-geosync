@@ -103,6 +103,7 @@ const FULL_CLUSTER_DISPLAY_ZOOM = 16;
 let cachePage = 1;
 let cachePageSize = Number(cachePageSizeSelect?.value || 100);
 let cacheTotalPages = 1;
+const DISPLAY_TIME_ZONE = 'Asia/Seoul';
 
 function setActiveView(viewName) {
   navButtons.forEach((button) => {
@@ -202,6 +203,7 @@ function formatShortDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: DISPLAY_TIME_ZONE,
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -1678,11 +1680,11 @@ async function copyWorkerLogs() {
   await navigator.clipboard.writeText(text);
 }
 
-function downloadWorkerLogs() {
-  const text = latestWorkerLogText || workerLogs?.textContent || '';
-  if (!text.trim()) return;
+async function downloadWorkerLogs() {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const blob = new Blob([`${text}\n`], { type: 'text/plain;charset=utf-8' });
+  const res = await fetch(`/api/admin/worker/logs/download?logLimit=500&tz=${encodeURIComponent(DISPLAY_TIME_ZONE)}`);
+  if (!res.ok) throw new Error('로그 다운로드에 실패했습니다.');
+  const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -2206,7 +2208,10 @@ function bindUiEvents() {
     console.error(error);
     alert(`로그 복사 실패: ${error.message}`);
   }));
-  downloadWorkerLogsButton?.addEventListener('click', downloadWorkerLogs);
+  downloadWorkerLogsButton?.addEventListener('click', () => downloadWorkerLogs().catch((error) => {
+    console.error(error);
+    alert(`로그 다운로드 실패: ${error.message}`);
+  }));
   saveSettingsButton?.addEventListener('click', () => saveSettings().catch((error) => {
     console.error(error);
     if (settingsStatus) settingsStatus.textContent = error.message || '환경 설정을 저장하지 못했습니다.';

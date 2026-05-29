@@ -117,6 +117,33 @@ app.get('/api/admin/worker', async (req, res) => {
   }
 });
 
+app.get('/api/admin/worker/logs/download', async (req, res) => {
+  try {
+    const snapshot = await getWorkerStatus({ logLimit: req.query.logLimit || 500 });
+    const timeZone = String(req.query.tz || 'Asia/Seoul').trim() || 'Asia/Seoul';
+    const formatter = new Intl.DateTimeFormat('ko-KR', {
+      timeZone,
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    });
+    const lines = (snapshot.logs || []).map((log) => {
+      const date = log.createdAt ? new Date(log.createdAt) : null;
+      const stamp = date && !Number.isNaN(date.getTime()) ? formatter.format(date) : '-';
+      return `[${stamp}] ${String(log.level || 'info').toUpperCase()} ${log.message || ''}`;
+    });
+    const body = `${lines.join('\n')}\n`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="immich-geosync-worker.log"');
+    return res.send(body);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/admin/settings', (req, res) => {
   try {
     res.json(listSettings());
