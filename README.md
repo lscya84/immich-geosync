@@ -23,6 +23,13 @@ Immich GeoSync의 고품질 한국어 주소 변환 및 지도 시각화 서비�
      * **역지오코딩 백업:** VWorld API가 간헐적으로 오류가 나거나 결과를 찾을 수 없을 때 백업 주소 추출 수단으로 구동됩니다.
    * **발급처:** [NAVER Cloud Platform 주소/지도 서비스](https://www.ncloud.com/product/applicationService/maps)에서 무료 한도 내(Web Map 월 300만 건 무료)로 등록 및 발급받으실 수 있습니다. (`Client ID` 및 `Client Secret` 필요)
 
+## Immich v3 호환 메모
+
+- Immich `v3`의 `asset_exif`, `asset_file`, `asset.originalFileName`, `asset.fileCreatedAt` 구조를 기준으로 동작합니다.
+- 어드민 미리보기는 편집 여부(`asset.isEdited`)에 맞는 preview/thumbnail 파일을 우선 선택합니다.
+- 어드민의 좌표 이동 기능은 Immich `v3`의 `lockedProperties` 중 `latitude`, `longitude` 잠금 자산을 건너뜁니다.
+- 어드민 preview 전송은 기본 `/usr/src/app/upload`뿐 아니라 `UPLOAD_LOCATION` 기준 custom media path도 지원합니다.
+
 ---
 
 ## 🏗️ 시스템 아키텍처 및 상세 작동 원리

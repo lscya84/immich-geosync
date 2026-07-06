@@ -13,6 +13,9 @@ Immich GeoSync는 Immich 사진의 좌표 기반 위치 정보를 한국어 주�
 - 설정 저장 후 실제 런타임 적용 시점이 명확해야 한다.
 - worker 로그는 최신 로그가 보이는 위치로 자동 스크롤되고, 자동 새로고침/복사/다운로드를 제공한다.
 - 운영 접속 주소는 `http://openclaw:3030/admin/`이다.
+- Immich `v3`의 edited asset 파일 구조를 따라 어드민 미리보기는 현재 편집 상태와 최대한 같은 preview/thumbnail을 우선 선택해야 한다.
+- Immich `v3`의 `lockedProperties` 중 좌표 잠금(`latitude`, `longitude`)은 수동 좌표 이동에서 존중해야 한다.
+- 어드민 preview 경로는 기본 업로드 루트뿐 아니라 `UPLOAD_LOCATION` 기반 custom media path도 허용해야 한다.
 
 ## 가정
 
@@ -121,3 +124,4 @@ docker compose restart immich-geosync-worker immich-geosync-admin
 - Admin 컨테이너의 `.env` volume이 읽기 전용이면 설정 저장이 실패한다.
 - Worker 컨테이너는 `.env`를 읽기 전용으로 마운트해도 된다.
 - Docker Hub publish는 GitHub Actions secret `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`이 필요하다.
+- Immich `v3`에서 `city/state/country`는 직접 유지되지만 preview/thumbnail 파생 파일은 편집 상태에 따라 달라질 수 있으므로 쿼리 우선순위가 중요하다.

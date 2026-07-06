@@ -41,6 +41,7 @@ const composeDir = (process.env.ADMIN_COMPOSE_DIR || '/docker/immich-geosync').t
 const composeBin = (process.env.ADMIN_DOCKER_BIN || 'docker').trim() || 'docker';
 const restartTimeoutMs = Math.max(3000, parseInt(process.env.ADMIN_RESTART_TIMEOUT_MS || '90000', 10) || 90000);
 const uploadRoot = (process.env.UPLOAD_LOCATION || '/usr/src/app/upload').trim() || '/usr/src/app/upload';
+const legacyUploadRoot = '/usr/src/app/upload';
 const mapStyleLightTileUrl = (process.env.IMMICH_MAP_STYLE_LIGHT_TILE_URL || 'https://tile.openstreetmap.org/{z}/{x}/{y}.png').trim();
 const mapStyleDarkTileUrl = (process.env.IMMICH_MAP_STYLE_DARK_TILE_URL || mapStyleLightTileUrl).trim();
 const mapStyleLightAttribution = (process.env.IMMICH_MAP_STYLE_LIGHT_ATTRIBUTION || '© OpenStreetMap contributors').trim();
@@ -53,6 +54,33 @@ const adminApiToken = String(process.env.ADMIN_API_TOKEN || '').trim();
 function adminDebug(event, payload = {}) {
   if (!adminDebugLogs) return;
   console.log(`[admin-debug] ${JSON.stringify({ scope: 'admin-server', event, ...payload })}`);
+}
+
+function isPathInsideRoot(candidatePath, rootPath) {
+  const normalizedRoot = path.resolve(rootPath);
+  const normalizedCandidate = path.resolve(candidatePath);
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}${path.sep}`);
+}
+
+function resolveUploadAssetPath(dbPath) {
+  const rawPath = String(dbPath || '').trim();
+  if (!rawPath) return '';
+
+  const normalizedUploadRoot = path.resolve(uploadRoot);
+  const normalizedDbPath = path.resolve(rawPath);
+  if (isPathInsideRoot(normalizedDbPath, normalizedUploadRoot)) {
+    return normalizedDbPath;
+  }
+
+  if (isPathInsideRoot(normalizedDbPath, legacyUploadRoot)) {
+    const relativePath = path.relative(path.resolve(legacyUploadRoot), normalizedDbPath);
+    const mappedPath = path.resolve(normalizedUploadRoot, relativePath);
+    if (isPathInsideRoot(mappedPath, normalizedUploadRoot)) {
+      return mappedPath;
+    }
+  }
+
+  return '';
 }
 
 app.use(express.json({ limit: '1mb' }));
@@ -590,11 +618,10 @@ app.get('/api/assets/:id/preview', async (req, res) => {
   try {
     const previewPath = await getAssetPreviewPath(req.params.id);
     if (!previewPath) return res.status(404).json({ error: 'preview를 찾을 수 없습니다.' });
-    if (!previewPath.startsWith('/usr/src/app/upload/')) {
+    const localPath = resolveUploadAssetPath(previewPath);
+    if (!localPath) {
       return res.status(400).json({ error: '허용되지 않은 preview 경로입니다.' });
     }
-
-    const localPath = path.join(uploadRoot, previewPath.replace('/usr/src/app/upload/', ''));
     return res.sendFile(localPath, (error) => {
       if (error && !res.headersSent) {
         res.status(error.statusCode || 500).json({ error: 'preview 전송 실패' });
@@ -609,11 +636,10 @@ app.get('/api/assets/:id/thumbnail', async (req, res) => {
   try {
     const thumbnailPath = await getAssetThumbnailPath(req.params.id);
     if (!thumbnailPath) return res.status(404).json({ error: 'thumbnail을 찾을 수 없습니다.' });
-    if (!thumbnailPath.startsWith('/usr/src/app/upload/')) {
+    const localPath = resolveUploadAssetPath(thumbnailPath);
+    if (!localPath) {
       return res.status(400).json({ error: '허용되지 않은 thumbnail 경로입니다.' });
     }
-
-    const localPath = path.join(uploadRoot, thumbnailPath.replace('/usr/src/app/upload/', ''));
     return res.sendFile(localPath, (error) => {
       if (error && !res.headersSent) {
         res.status(error.statusCode || 500).json({ error: 'thumbnail 전송 실패' });
