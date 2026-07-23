@@ -6,6 +6,7 @@ const { randomUUID } = require('crypto');
 const { reverseGeocode, translateLocation } = require('./lib/geocode');
 const { findMatchingRule, findMatchingGeometryEntity, buildRuleAddress } = require('./lib/override-rules');
 const { buildClusterRuleAddress } = require('./lib/cluster-rule-address');
+const { clusterRowsByGrid, selectRepresentativeCoordinate, partitionRowsByRules } = require('./lib/spatial-clustering');
 const {
     ensureWorkerMonitorTables,
     startWorkerRun,
@@ -49,6 +50,7 @@ const DB_UPDATE_CHUNK_SIZE = 1000;
 const FAST_TRACK_LOG_INTERVAL = 10000;
 const API_TRACK_LOG_INTERVAL = 50;
 const API_FAILURE_LOG_LIMIT = 5;
+const SOUTH_KOREA_BOUNDS = { south: 32.8, north: 38.7, west: 124.5, east: 132 };
 
 let isRunning = false;
 let activeRunId = null;
@@ -138,17 +140,6 @@ function setMemoryCache(cacheKey, value, enforceLimit = true) {
         addressCache.delete(firstKey);
     }
     addressCache.set(cacheKey, value);
-}
-
-function haversineMeters(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
-    const toRad = (deg) => (deg * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 async function ensureCacheTable(client) {
@@ -384,11 +375,36 @@ async function bulkUpdateAssets(client, items) {
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
+function createEntityCluster(key, rows, entityField, entity) {
+    const representative = selectRepresentativeCoordinate(rows);
+    return {
+        clusterId: key,
+        clusterKey: key,
+        geoCacheKey: key,
+        centroidLat: representative.latitude,
+        centroidLon: representative.longitude,
+        assetCount: rows.length,
+        uniqueCoordinateCount: new Set(rows.map((row) => `${Number(row.latitude)}:${Number(row.longitude)}`)).size,
+        assetIds: rows.map((row) => row.assetId),
+        points: rows,
+        [entityField]: entity,
+    };
+}
+
+function partitionRowsByOverride(rows, overrideRules) {
+    const { matches, remainingRows } = partitionRowsByRules(rows, overrideRules, findMatchingRule);
+    const overrideClusters = matches.map(({ rule, rows: matchedRows }) => {
+        const cluster = createEntityCluster(`override:${rule.id}`, matchedRows, 'overrideRule', rule);
+        return { ...cluster, overrideAddress: buildRuleAddress(rule), cacheKey: cluster.geoCacheKey };
+    });
+    return { overrideClusters, remainingRows };
+}
+
 function clusterRows(rows, radiusMeters, clusterGroups = []) {
     const groupedMap = new Map();
     const ungrouped = [];
 
-    for (const row of rows.map((item, index) => ({ ...item, __index: index }))) {
+    for (const row of rows) {
         const group = findMatchingGeometryEntity(Number(row.latitude), Number(row.longitude), clusterGroups);
         if (!group) {
             ungrouped.push(row);
@@ -396,68 +412,13 @@ function clusterRows(rows, radiusMeters, clusterGroups = []) {
         }
 
         const key = `manual-group:${group.id}`;
-        if (!groupedMap.has(key)) {
-            groupedMap.set(key, {
-                clusterId: key,
-                clusterKey: key,
-                centroidLat: 0,
-                centroidLon: 0,
-                assetCount: 0,
-                assetIds: [],
-                points: [],
-                manualGroup: group,
-            });
-        }
-
-        const cluster = groupedMap.get(key);
-        cluster.points.push(row);
-        cluster.assetIds.push(row.assetId);
-        cluster.assetCount += 1;
-        cluster.centroidLat += parseFloat(row.latitude);
-        cluster.centroidLon += parseFloat(row.longitude);
+        if (!groupedMap.has(key)) groupedMap.set(key, { group, rows: [] });
+        groupedMap.get(key).rows.push(row);
     }
 
-    const clusters = [];
-    for (const cluster of groupedMap.values()) {
-        cluster.centroidLat /= cluster.assetCount;
-        cluster.centroidLon /= cluster.assetCount;
-        cluster.geoCacheKey = buildClusterKey(cluster.centroidLat, cluster.centroidLon, radiusMeters);
-        clusters.push(cluster);
-    }
-
-    const remaining = [...ungrouped];
-    while (remaining.length) {
-        const seed = remaining.shift();
-        const clusterItems = [seed];
-        let sumLat = parseFloat(seed.latitude);
-        let sumLon = parseFloat(seed.longitude);
-
-        for (let i = remaining.length - 1; i >= 0; i--) {
-            const row = remaining[i];
-            const distance = haversineMeters(seed.latitude, seed.longitude, row.latitude, row.longitude);
-            if (distance <= radiusMeters) {
-                clusterItems.push(row);
-                sumLat += parseFloat(row.latitude);
-                sumLon += parseFloat(row.longitude);
-                remaining.splice(i, 1);
-            }
-        }
-
-        const centroidLat = sumLat / clusterItems.length;
-        const centroidLon = sumLon / clusterItems.length;
-        clusters.push({
-            clusterId: randomUUID(),
-            clusterKey: buildClusterKey(centroidLat, centroidLon, radiusMeters),
-            geoCacheKey: buildClusterKey(centroidLat, centroidLon, radiusMeters),
-            centroidLat,
-            centroidLon,
-            assetCount: clusterItems.length,
-            assetIds: clusterItems.map((row) => row.assetId),
-            points: clusterItems,
-        });
-    }
-
-    return clusters;
+    const manualClusters = [...groupedMap.entries()].map(([key, { group, rows: matchedRows }]) =>
+        createEntityCluster(key, matchedRows, 'manualGroup', group));
+    return [...manualClusters, ...clusterRowsByGrid(ungrouped, radiusMeters)];
 }
 
 async function listEnabledClusterGroups(client) {
@@ -561,7 +522,8 @@ async function main(forceUpdate = false) {
         console.log(`[${nowKst()}] 🗺️ 활성 override rule 로드: ${overrideRules.length}개`);
         console.log(`[${nowKst()}] 🧩 활성 single-cluster rule/group 로드: ${clusterGroups.length}개`);
 
-        let queryCondition = `WHERE "latitude" BETWEEN 33 AND 43 AND "longitude" BETWEEN 124 AND 132`;
+        let queryCondition = `WHERE "latitude" BETWEEN ${SOUTH_KOREA_BOUNDS.south} AND ${SOUTH_KOREA_BOUNDS.north}`;
+        queryCondition += ` AND "longitude" BETWEEN ${SOUTH_KOREA_BOUNDS.west} AND ${SOUTH_KOREA_BOUNDS.east}`;
         queryCondition += ` AND (COALESCE("country", '') IN ('', 'South Korea', '대한민국', 'Korea'))`;
 
         if (!forceUpdate) {
@@ -588,8 +550,8 @@ async function main(forceUpdate = false) {
         }
 
         console.log(`[${nowKst()}] 🧩 클러스터링 시작 (반경 ${config.clusterRadiusMeters}m)`);
-        const clusters = clusterRows(res.rows, config.clusterRadiusMeters, clusterGroups);
-        const overrideClusters = [];
+        const { overrideClusters, remainingRows } = partitionRowsByOverride(res.rows, overrideRules);
+        const clusters = clusterRows(remainingRows, config.clusterRadiusMeters, clusterGroups);
         const fastTrackClusters = [];
         const negativeCacheClusters = [];
         const apiTrackClusters = [];
@@ -598,24 +560,21 @@ async function main(forceUpdate = false) {
         let overrideCacheWarmMisses = 0;
         let overrideCacheWarmNotFound = 0;
 
+        for (const cluster of overrideClusters) {
+            const cached = addressCache.get(cluster.cacheKey);
+            if (!cached) {
+                overrideCacheFillClusters.push(cluster);
+                overrideCacheWarmMisses++;
+            } else if (cached.status === 'not_found') {
+                overrideCacheWarmNotFound++;
+            } else {
+                overrideCacheWarmHits++;
+            }
+        }
+
         for (const cluster of clusters) {
-            const overrideRule = findMatchingRule(cluster.centroidLat, cluster.centroidLon, overrideRules);
             const cacheKey = getGeoCacheKeyForCluster(cluster);
             const cached = addressCache.get(cacheKey);
-
-            if (overrideRule) {
-                overrideClusters.push({ ...cluster, overrideRule, overrideAddress: buildRuleAddress(overrideRule), cacheKey });
-
-                if (!cached) {
-                    overrideCacheFillClusters.push(cluster);
-                    overrideCacheWarmMisses++;
-                } else if (cached.status === 'not_found') {
-                    overrideCacheWarmNotFound++;
-                } else {
-                    overrideCacheWarmHits++;
-                }
-                continue;
-            }
 
             if (!cached) {
                 apiTrackClusters.push(cluster);
@@ -633,7 +592,7 @@ async function main(forceUpdate = false) {
 
         console.log(`[${nowKst()}] 🧭 대상 분류 완료 (적용 우선순위: polygon > cache > api)`);
         console.log(` ├─ 전체 사진: ${res.rows.length}건`);
-        console.log(` ├─ 전체 클러스터: ${clusters.length}개`);
+        console.log(` ├─ 전체 클러스터: ${clusters.length + overrideClusters.length}개`);
         console.log(` ├─ Polygon 적용 대상: ${overrideClusters.length}개 클러스터 / ${overridePhotos}장`);
         console.log(` │  └─ Polygon 대상 캐시 상태: hit ${overrideCacheWarmHits} / miss ${overrideCacheWarmMisses} / not_found ${overrideCacheWarmNotFound}`);
         console.log(` ├─ Cache 즉시 반영 대상: ${fastTrackClusters.length}개 클러스터 / ${fastTrackPhotos}장`);
@@ -772,7 +731,7 @@ async function main(forceUpdate = false) {
         }
         console.log(`[${nowKst()}] 🎉 작업 완료 상세 리포트`);
         console.log(` ┌─ 캐시 워밍업 적재: ${warmedCount}건`);
-        console.log(` ├─ 총 클러스터 수: ${clusters.length}개`);
+        console.log(` ├─ 총 클러스터 수: ${clusters.length + overrideClusters.length}개`);
         console.log(` ├─ Polygon 적용 클러스터: ${overrideClusters.length}개`);
         console.log(` ├─ Polygon 대상 캐시 hit/miss/not_found: ${overrideCacheWarmHits}/${overrideCacheWarmMisses}/${overrideCacheWarmNotFound}`);
         console.log(` ├─ Polygon 대상 캐시 보강 success/not_found/miss: ${overrideCacheFilledSuccess}/${overrideCacheFilledNotFound}/${overrideCacheFilledMiss}`);
@@ -795,7 +754,7 @@ async function main(forceUpdate = false) {
             status: 'completed',
             summary: {
                 targetPhotos: res.rows.length,
-                totalClusters: clusters.length,
+                totalClusters: clusters.length + overrideClusters.length,
                 overrideClusters: overrideClusters.length,
                 fastTrackClusters: fastTrackClusters.length,
                 negativeCacheClusters: negativeCacheSkippedClusters,

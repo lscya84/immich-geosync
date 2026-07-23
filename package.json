@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "start": "node updater.js",
-    "admin": "node admin-server.js"
+    "admin": "node admin-server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "dotenv": "^17.2.3",
