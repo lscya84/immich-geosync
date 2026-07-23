@@ -63,6 +63,7 @@ let isRunning = false;
 let activeRunId = null;
 let activeLogClient = null;
 const pendingLogWrites = new Set();
+let logWriteQueue = Promise.resolve();
 const originalConsole = { ...console };
 
 function getWorkerRuntimeConfig() {
@@ -90,15 +91,19 @@ function stringifyLogArg(arg) {
 
 function mirrorConsoleToDb(level, args) {
     if (!activeLogClient || !activeRunId) return;
-    const writePromise = appendWorkerLog(activeLogClient, {
-        runId: activeRunId,
+    const logClient = activeLogClient;
+    const runId = activeRunId;
+    const message = args.map(stringifyLogArg).join(' ');
+    const writePromise = logWriteQueue.then(() => appendWorkerLog(logClient, {
+        runId,
         level,
-        message: args.map(stringifyLogArg).join(' '),
-    }).catch((error) => {
+        message,
+    })).catch((error) => {
         originalConsole.warn(`[${nowKst()}] ⚠️ 워커 로그 DB 저장 실패: ${error.message}`);
     }).finally(() => {
         pendingLogWrites.delete(writePromise);
     });
+    logWriteQueue = writePromise;
     pendingLogWrites.add(writePromise);
 }
 
@@ -944,7 +949,7 @@ async function main(forceUpdate = false) {
         }
     } finally {
         activeLogClient = null;
-        await Promise.allSettled([...pendingLogWrites]);
+        await logWriteQueue;
         try {
             await logClient.end();
         } catch (e) {}
