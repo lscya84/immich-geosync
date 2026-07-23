@@ -39,6 +39,8 @@ Immich GeoSync의 고품질 한국어 주소 변환 및 지도 시각화 서비�
 ### 🧩 1. `immich-geosync-worker` (보정 워커)
 `updater.js` 엔진을 통해 백그라운드에서 주기적으로 데이터베이스를 전수조사하여 무주소 좌표들을 보정합니다. API 트래픽을 최소화하기 위한 **3단계 공간 지능형 파이프라인**을 제공합니다.
 
+대한민국 본토 경계 검증에는 public domain인 **Natural Earth 1:110m** 경계를 사용하며, 일반화된 해안선 오차와 주요 도서 지역은 별도 허용영역으로 보완합니다. 최종 자동 반영은 API가 반환한 대한민국 시도명 검증까지 통과해야 합니다.
+
 * **1단계: 대상 추출**
   * 대한민국 경위도 영역(`latitude` 32.8~38.7, `longitude` 124.5~132)에 포함된 사진들 중 아직 한글 주소(`city`, `state` 등)가 채워지지 않았거나 누락된 대상을 선별합니다. (옵션 `--force` 실행 시 전체 전수 재보정 가능)
 * **2단계: 결정론적 공간격자 클러스터링**
@@ -47,6 +49,8 @@ Immich GeoSync의 고품질 한국어 주소 변환 및 지도 시각화 서비�
   * **Override Track (수동 규칙):** 각 사진 좌표가 관리자가 지도 위에 그린 커스텀 다각형(Polygon Rule) 구역 안에 속하면 API 호출 없이 사용자가 수동 설정한 건물명/주소를 할당합니다. 자동 클러스터가 경계를 걸쳐도 바깥 사진에는 규칙이 전파되지 않습니다.
   * **Fast Track (로컬 고속 캐시):** 이미 분석했던 클러스터는 DB/메모리 하이브리드 캐시 테이블(`custom_naver_geocode_cache`)에 보관되어 단 0.001초 만에 캐시 데이터로 일괄 갱신 처리됩니다.
   * **API Track (실시간 역지오코딩):** 캐시에 없는 새로운 좌표만 정밀 매핑하여 **VWorld API** 및 **NAVER Maps API**를 순차 탐색하여 정확한 한국어 법정동 및 도로명 주소를 수집/저장합니다.
+  * **Boundary Validation (경계 검증):** 여러 좌표가 퍼진 클러스터는 대표점과 북/남/동/서 극점의 행정주소를 비교합니다. 대한민국 경계 밖이거나 공급자·극점 주소가 다르면 `review_required`로 보류하여 사진 주소를 자동 변경하지 않습니다.
+  * **Structured Address Cache:** 국가, 시도, 시군구·동, 법정동, 도로명주소, 지번주소, 건물명, 공급자와 검증상태를 각각 저장합니다. Immich에는 기존 호환 형식의 `country/state/city`만 반영합니다.
   * **Negative Cache (실패 방지 캐시):** 지리적 예외로 역지오코딩 결과가 존재하지 않는 좌표군은 실패 캐시(`not_found`)로 격리하여 무의미한 유료 API 낭비를 사전에 자동 차단합니다.
 
 ### 🗺️ 2. `immich-geosync-admin` (클러스터 맵 에디터 & 웹 어드민)
@@ -111,6 +115,7 @@ CLUSTER_RADIUS_METERS=15
 APPEND_BUILDING_NAME=true
 API_TIMEOUT_MS=10000
 NAVER_API_TIMEOUT_MS=10000
+BOUNDARY_VALIDATION_MIN_SPAN_METERS=10
 
 # Admin UI 포트 및 경로
 ADMIN_PORT=3030

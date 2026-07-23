@@ -15,6 +15,9 @@ Immich GeoSync는 Immich 사진의 좌표 기반 위치 정보를 한국어 주�
 - worker는 동일 좌표를 먼저 집계하고, 고유 좌표를 입력 순서와 무관한 고정 공간격자로 군집화한다.
 - 자동 역지오코딩 대표점은 산술평균 좌표가 아니라 실제 촬영 좌표 중 격자 중심에 가장 가까운 좌표를 사용한다.
 - Point/Polygon override는 자동 클러스터 대표점이 아니라 개별 사진 좌표에 우선 적용한다.
+- 여러 실제 좌표가 넓게 퍼진 자동 클러스터는 대표점과 극점의 행정주소 일치 여부를 검사하고, 불일치 결과는 자동 반영하지 않는다.
+- 자동 주소는 대한민국 시도 유효성 검사를 통과한 경우에만 반영한다.
+- GeoSync 캐시는 표시 문자열 외에 법정동, 도로명주소, 지번주소, 건물명, 공급자와 검증상태를 구조적으로 보존한다.
 - 설정 저장 후 실제 런타임 적용 시점이 명확해야 한다.
 - worker 로그는 최신 로그가 보이는 위치로 자동 스크롤되고, 자동 새로고침/복사/다운로드를 제공한다.
 - 운영 접속 주소는 `http://openclaw:3030/admin/`이다.
@@ -107,6 +110,30 @@ Worker는 `asset_exif` 갱신을 최대 1,000장 단위로 순차 처리한다. 
 
 수동 override와 single-cluster group은 자동 공간 클러스터링 전에 각 asset 좌표별로 판정한다. 따라서 자동 클러스터가 Polygon 경계를 걸쳐도 Polygon 바깥 asset에 override가 전파되지 않는다.
 
+## Address Validation
+
+- 대한민국 경위도 사각형은 1차 후보 필터로만 사용한다.
+- API 결과의 `country`와 대한민국 시도명을 검증하며, 유효하지 않은 주소는 `review_required`로 보류한다.
+- 고유 좌표가 둘 이상이고 좌표 분산이 `BOUNDARY_VALIDATION_MIN_SPAN_METERS` 이상인 자동 클러스터는 대표점과 북/남/동/서 극점을 VWorld 우선으로 확인한다.
+- 극점 중 하나라도 대표점과 시도·시군구/법정동이 다르면 해당 클러스터를 `review_required` 캐시로 저장하고 Immich 주소를 변경하지 않는다.
+- VWorld와 Naver가 모두 응답했는데 행정주소가 다르면 공급자 불일치로 보류한다.
+
+## Structured Geocode Cache
+
+`custom_naver_geocode_cache`는 기존 `state`, `city` 호환 컬럼을 유지하면서 다음 구조화 컬럼을 추가한다.
+
+- `country`
+- `legal_dong`
+- `road_address`
+- `jibun_address`
+- `building_name`
+- `provider`
+- `provider_agreement`
+- `validation_status`
+- `validation_details` JSONB
+
+`status`는 `success`, `not_found`, `review_required`를 사용한다. `review_required`는 Admin에서 검토 후 `success`로 바꾸기 전까지 worker가 자동 적용하지 않는다.
+
 테이블명은 기존 운영 데이터와 호환을 위해 `custom_geo_*` 이름을 유지한다.
 
 ## Deployment
@@ -129,6 +156,9 @@ Worker는 `asset_exif` 갱신을 최대 1,000장 단위로 순차 처리한다. 
 - 동일 좌표 asset이 하나의 좌표 bucket으로 집계되는지 확인
 - 대표점이 산술평균 가상점이 아니라 실제 입력 좌표 중 하나인지 확인
 - Polygon 경계 양쪽 asset이 override 단계에서 분리되는지 확인
+- 대한민국 시도가 아닌 API 결과가 자동 반영되지 않는지 확인
+- 공급자 또는 클러스터 극점의 행정주소가 다르면 `review_required`가 되는지 확인
+- 구조화 주소 필드가 캐시 저장/조회 과정에서 보존되는지 확인
 - Admin health check: `/healthz`
 - Admin page title: `<title>Immich GeoSync Admin</title>`
 - Settings API: `/api/admin/settings`

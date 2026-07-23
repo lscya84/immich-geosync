@@ -8,6 +8,12 @@ const { findMatchingRule, findMatchingGeometryEntity, buildRuleAddress } = requi
 const { buildClusterRuleAddress } = require('./lib/cluster-rule-address');
 const { clusterRowsByGrid, selectRepresentativeCoordinate, partitionRowsByRules } = require('./lib/spatial-clustering');
 const {
+    normalizeAdministrativeKey,
+    isSouthKoreanAddress,
+    isWithinSouthKoreaBoundary,
+    getBoundaryValidationPoints,
+} = require('./lib/address-validation');
+const {
     ensureWorkerMonitorTables,
     startWorkerRun,
     finishWorkerRun,
@@ -33,6 +39,7 @@ const config = {
     appendBuildingName: String(process.env.APPEND_BUILDING_NAME || 'true').toLowerCase() === 'true',
     dbRetryLimit: parseInt(process.env.DB_RETRY_LIMIT || '10', 10),
     dbRetryDelayMs: parseInt(process.env.DB_RETRY_DELAY_MS || '2000', 10),
+    boundaryValidationMinSpanMeters: parseInt(process.env.BOUNDARY_VALIDATION_MIN_SPAN_METERS || '10', 10),
 };
 
 const isForceMode = process.argv.includes('--force');
@@ -67,6 +74,7 @@ function getWorkerRuntimeConfig() {
         clusterYieldInterval: config.clusterYieldInterval,
         appendBuildingName: config.appendBuildingName,
         notFoundCacheTtlDays: NOT_FOUND_CACHE_TTL_DAYS,
+        boundaryValidationMinSpanMeters: config.boundaryValidationMinSpanMeters,
     };
 }
 
@@ -146,8 +154,17 @@ async function ensureCacheTable(client) {
     await client.query(`
         CREATE TABLE IF NOT EXISTS "custom_naver_geocode_cache" (
             "cache_key" VARCHAR PRIMARY KEY,
+            "country" VARCHAR,
             "state" VARCHAR,
             "city" VARCHAR,
+            "legal_dong" VARCHAR,
+            "road_address" TEXT,
+            "jibun_address" TEXT,
+            "building_name" VARCHAR,
+            "provider" VARCHAR,
+            "provider_agreement" BOOLEAN,
+            "validation_status" VARCHAR,
+            "validation_details" JSONB,
             "status" VARCHAR,
             "failure_reason" VARCHAR,
             "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -155,13 +172,23 @@ async function ensureCacheTable(client) {
     `);
     await client.query(`ALTER TABLE "custom_naver_geocode_cache" ADD COLUMN IF NOT EXISTS "status" VARCHAR`);
     await client.query(`ALTER TABLE "custom_naver_geocode_cache" ADD COLUMN IF NOT EXISTS "failure_reason" VARCHAR`);
+    const structuredColumns = [
+        ['country', 'VARCHAR'], ['legal_dong', 'VARCHAR'], ['road_address', 'TEXT'],
+        ['jibun_address', 'TEXT'], ['building_name', 'VARCHAR'], ['provider', 'VARCHAR'],
+        ['provider_agreement', 'BOOLEAN'], ['validation_status', 'VARCHAR'], ['validation_details', 'JSONB'],
+    ];
+    for (const [column, type] of structuredColumns) {
+        await client.query(`ALTER TABLE "custom_naver_geocode_cache" ADD COLUMN IF NOT EXISTS "${column}" ${type}`);
+    }
 }
 
 async function warmUpCache(client) {
     addressCache.clear();
 
     const res = await client.query(
-        `SELECT "cache_key", "state", "city", "status", "failure_reason"
+        `SELECT "cache_key", "country", "state", "city", "legal_dong", "road_address", "jibun_address",
+                "building_name", "provider", "provider_agreement", "validation_status", "validation_details",
+                "status", "failure_reason"
          FROM "custom_naver_geocode_cache"
          WHERE (
              COALESCE("status", 'success') = 'success'
@@ -170,14 +197,27 @@ async function warmUpCache(client) {
          OR (
              COALESCE("status", 'success') = 'not_found'
              AND "updated_at" >= CURRENT_TIMESTAMP - ($2 * INTERVAL '1 day')
+         )
+         OR (
+             COALESCE("status", 'success') = 'review_required'
+             AND "updated_at" >= CURRENT_TIMESTAMP - ($1 * INTERVAL '1 day')
          )`,
         [CACHE_TTL_DAYS, NOT_FOUND_CACHE_TTL_DAYS],
     );
 
     for (const row of res.rows) {
         setMemoryCache(row.cache_key, {
+            country: row.country || '',
             state: row.state,
             city: row.city,
+            legalDong: row.legal_dong || '',
+            roadAddress: row.road_address || '',
+            jibunAddress: row.jibun_address || '',
+            buildingName: row.building_name || '',
+            provider: row.provider || '',
+            providerAgreement: row.provider_agreement,
+            validationStatus: row.validation_status || row.status || 'success',
+            validationDetails: row.validation_details || null,
             status: row.status || 'success',
             failureReason: row.failure_reason || '',
         }, false);
@@ -193,15 +233,32 @@ async function clearAllCache(client) {
 
 async function upsertCache(client, cacheKey, address) {
     await client.query(
-        `INSERT INTO "custom_naver_geocode_cache" ("cache_key", "state", "city", "status", "failure_reason", "updated_at")
-         VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+        `INSERT INTO "custom_naver_geocode_cache"
+            ("cache_key", "country", "state", "city", "legal_dong", "road_address", "jibun_address",
+             "building_name", "provider", "provider_agreement", "validation_status", "validation_details",
+             "status", "failure_reason", "updated_at")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, CURRENT_TIMESTAMP)
          ON CONFLICT ("cache_key") DO UPDATE
-         SET "state" = EXCLUDED."state",
+         SET "country" = EXCLUDED."country",
+             "state" = EXCLUDED."state",
              "city" = EXCLUDED."city",
+             "legal_dong" = EXCLUDED."legal_dong",
+             "road_address" = EXCLUDED."road_address",
+             "jibun_address" = EXCLUDED."jibun_address",
+             "building_name" = EXCLUDED."building_name",
+             "provider" = EXCLUDED."provider",
+             "provider_agreement" = EXCLUDED."provider_agreement",
+             "validation_status" = EXCLUDED."validation_status",
+             "validation_details" = EXCLUDED."validation_details",
              "status" = EXCLUDED."status",
              "failure_reason" = EXCLUDED."failure_reason",
              "updated_at" = CURRENT_TIMESTAMP`,
-        [cacheKey, address.state, address.city, address.status || 'success', address.failureReason || ''],
+        [
+            cacheKey, address.country || '', address.state || '', address.city || '', address.legalDong || '',
+            address.roadAddress || '', address.jibunAddress || '', address.buildingName || '', address.provider || '',
+            address.providerAgreement, address.validationStatus || address.status || 'success',
+            JSON.stringify(address.validationDetails || null), address.status || 'success', address.failureReason || '',
+        ],
     );
 }
 
@@ -211,6 +268,85 @@ function isNotFoundDiagnostics(diagnostics) {
     const vworldNotFound = vworldReason === 'NOT_FOUND';
     const naverNotFound = naverReason.includes('결과가 없습니다');
     return vworldNotFound && naverNotFound;
+}
+
+function buildStructuredAddress(result) {
+    return {
+        country: result.summary.country || '',
+        state: result.summary.state || '',
+        city: result.summary.city || '',
+        legalDong: result.summary.legalDong || '',
+        roadAddress: result.summary.roadAddress || '',
+        jibunAddress: result.summary.jibunAddress || '',
+        buildingName: result.summary.buildingName || '',
+        provider: result.summary.selectedProvider || '',
+        providerAgreement: result.summary.providerAgreement,
+        source: 'api',
+    };
+}
+
+async function validateClusterAddress(cluster, result) {
+    const address = buildStructuredAddress(result);
+    if (!isWithinSouthKoreaBoundary(cluster.centroidLat, cluster.centroidLon)) {
+        return { valid: false, reason: 'outside-south-korea-boundary', checkedPoints: 1 };
+    }
+    if (!isSouthKoreanAddress(address)) {
+        return { valid: false, reason: 'outside-south-korea-or-invalid-state', checkedPoints: 1 };
+    }
+    if (address.providerAgreement === false) {
+        return {
+            valid: false,
+            reason: 'provider-address-mismatch',
+            checkedPoints: 1,
+            providers: result.providers,
+        };
+    }
+
+    const boundaryPoints = getBoundaryValidationPoints(cluster, config.boundaryValidationMinSpanMeters);
+    const representativeKey = normalizeAdministrativeKey(address);
+    const checked = [];
+    for (const point of boundaryPoints) {
+        const boundaryResult = await reverseGeocode(point.latitude, point.longitude, {
+            naverId: config.naverId,
+            naverSecret: config.naverSecret,
+            vworldKey: config.vworldKey,
+            apiTimeoutMs: config.apiTimeoutMs,
+        }, {
+            preferBuildingName: false,
+            includeRaw: false,
+        });
+        const boundaryAddress = boundaryResult?.ok ? buildStructuredAddress(boundaryResult) : null;
+        checked.push({
+            latitude: point.latitude,
+            longitude: point.longitude,
+            addressKey: boundaryAddress ? normalizeAdministrativeKey(boundaryAddress) : '',
+        });
+        if (!boundaryAddress || !isSouthKoreanAddress(boundaryAddress)) {
+            return { valid: false, reason: 'boundary-point-unresolved', checkedPoints: checked.length + 1, checked };
+        }
+        if (!isWithinSouthKoreaBoundary(point.latitude, point.longitude)) {
+            return { valid: false, reason: 'boundary-point-outside-south-korea', checkedPoints: checked.length + 1, checked };
+        }
+        if (normalizeAdministrativeKey(boundaryAddress) !== representativeKey) {
+            return { valid: false, reason: 'boundary-address-mismatch', checkedPoints: checked.length + 1, checked };
+        }
+        if (config.delay > 0) await sleep(config.delay);
+    }
+
+    return { valid: true, reason: 'validated', checkedPoints: boundaryPoints.length + 1, checked };
+}
+
+async function cacheReviewRequired(client, cacheKey, address, validation) {
+    const review = {
+        ...(address || {}),
+        status: 'review_required',
+        validationStatus: 'review_required',
+        validationDetails: validation,
+        failureReason: validation.reason || 'review-required',
+    };
+    setMemoryCache(cacheKey, review);
+    await upsertCache(client, cacheKey, review);
+    return { address: null, diagnostics: null, cacheStatus: 'review_required', validation };
 }
 
 async function getClusterAddress(client, cluster) {
@@ -228,6 +364,9 @@ async function getClusterAddress(client, cluster) {
                 cacheStatus: 'not_found',
             };
         }
+        if (cached.status === 'review_required') {
+            return { address: null, diagnostics: null, cacheStatus: 'review_required', validation: cached.validationDetails };
+        }
         return { address: { ...cached, source: 'memory' }, diagnostics: null, cacheStatus: 'success' };
     }
 
@@ -243,12 +382,13 @@ async function getClusterAddress(client, cluster) {
 
     let address = null;
     if (result?.ok) {
-        address = {
-            state: result.summary.state || '',
-            city: result.summary.city || '',
-            source: 'api',
-            provider: result.summary.selectedProvider || 'vworld',
-        };
+        address = buildStructuredAddress(result);
+        const validation = await validateClusterAddress(cluster, result);
+        if (!validation.valid) {
+            return cacheReviewRequired(client, cacheKey, address, validation);
+        }
+        address.validationStatus = 'validated';
+        address.validationDetails = validation;
     }
 
     if (!address) {
@@ -256,10 +396,18 @@ async function getClusterAddress(client, cluster) {
         const korCity = translateLocation(cluster.points[0]?.city);
         if (korState || korCity) {
             address = {
+                country: '대한민국',
                 state: korState || cluster.points[0]?.state || '',
                 city: korCity || cluster.points[0]?.city || '',
+                legalDong: '',
+                roadAddress: '',
+                jibunAddress: '',
+                buildingName: '',
                 source: 'fallback',
                 provider: 'mapping',
+                providerAgreement: null,
+                validationStatus: 'mapped-fallback',
+                validationDetails: { reason: 'translated-existing-metadata' },
             };
         }
     }
@@ -270,6 +418,8 @@ async function getClusterAddress(client, cluster) {
                 state: '',
                 city: '',
                 status: 'not_found',
+                validationStatus: 'not_found',
+                validationDetails: { reason: 'not-found' },
                 failureReason: 'not-found',
             };
             setMemoryCache(cacheKey, negativeCache);
@@ -554,6 +704,7 @@ async function main(forceUpdate = false) {
         const clusters = clusterRows(remainingRows, config.clusterRadiusMeters, clusterGroups);
         const fastTrackClusters = [];
         const negativeCacheClusters = [];
+        const reviewRequiredClusters = [];
         const apiTrackClusters = [];
         const overrideCacheFillClusters = [];
         let overrideCacheWarmHits = 0;
@@ -580,6 +731,8 @@ async function main(forceUpdate = false) {
                 apiTrackClusters.push(cluster);
             } else if (cached.status === 'not_found') {
                 negativeCacheClusters.push(cluster);
+            } else if (cached.status === 'review_required') {
+                reviewRequiredClusters.push(cluster);
             } else {
                 fastTrackClusters.push(cluster);
             }
@@ -588,6 +741,7 @@ async function main(forceUpdate = false) {
         const overridePhotos = overrideClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
         const fastTrackPhotos = fastTrackClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
         const negativeCachePhotos = negativeCacheClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
+        let reviewRequiredPhotos = reviewRequiredClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
         const apiTrackPhotos = apiTrackClusters.reduce((sum, cluster) => sum + cluster.assetCount, 0);
 
         console.log(`[${nowKst()}] 🧭 대상 분류 완료 (적용 우선순위: polygon > cache > api)`);
@@ -597,6 +751,7 @@ async function main(forceUpdate = false) {
         console.log(` │  └─ Polygon 대상 캐시 상태: hit ${overrideCacheWarmHits} / miss ${overrideCacheWarmMisses} / not_found ${overrideCacheWarmNotFound}`);
         console.log(` ├─ Cache 즉시 반영 대상: ${fastTrackClusters.length}개 클러스터 / ${fastTrackPhotos}장`);
         console.log(` ├─ Cache not_found 보류: ${negativeCacheClusters.length}개 클러스터 / ${negativeCachePhotos}장`);
+        console.log(` ├─ 경계/국가 검토 대기: ${reviewRequiredClusters.length}개 클러스터 / ${reviewRequiredPhotos}장`);
         console.log(` └─ Cache miss(API 조회 필요): ${apiTrackClusters.length}개 클러스터 / ${apiTrackPhotos}장`);
 
         let totalUpdated = 0;
@@ -608,6 +763,7 @@ async function main(forceUpdate = false) {
         let apiCallCount = 0;
         let apiAttemptedClusters = 0;
         let apiFailedClusters = 0;
+        let apiReviewRequiredClusters = 0;
         let apiFailureLogCount = 0;
         let fastPrepared = 0;
         let apiProcessedClusters = 0;
@@ -694,7 +850,7 @@ async function main(forceUpdate = false) {
                 apiProcessedClusters++;
                 apiProcessedPhotos += cluster.assetCount;
 
-                const { address, diagnostics } = await getClusterAddress(client, cluster);
+                const { address, diagnostics, cacheStatus } = await getClusterAddress(client, cluster);
                 const attempted = Boolean(diagnostics?.vworld?.attempted || diagnostics?.naver?.attempted);
                 if (attempted) apiAttemptedClusters++;
                 if (address?.source === 'api') apiCallCount++;
@@ -708,6 +864,9 @@ async function main(forceUpdate = false) {
                     const updated = await bulkUpdateAssets(client, updateItems);
                     apiTrackUpdated += updated;
                     totalUpdated += updated;
+                } else if (cacheStatus === 'review_required') {
+                    apiReviewRequiredClusters++;
+                    reviewRequiredPhotos += cluster.assetCount;
                 } else {
                     apiFailedClusters++;
                     if (apiFailureLogCount < API_FAILURE_LOG_LIMIT) {
@@ -719,7 +878,7 @@ async function main(forceUpdate = false) {
                 if (apiProcessedClusters <= 3 || apiProcessedClusters % API_TRACK_LOG_INTERVAL === 0 || apiProcessedClusters === apiTrackClusters.length) {
                     const clusterRatio = apiTrackClusters.length ? ((apiProcessedClusters / apiTrackClusters.length) * 100).toFixed(1) : '100.0';
                     const photoRatio = totalPhotos ? ((apiProcessedPhotos / totalPhotos) * 100).toFixed(1) : '100.0';
-                    console.log(`[${nowKst()}] 🌐 API Phase 진행: 클러스터 ${apiProcessedClusters}/${apiTrackClusters.length} (${clusterRatio}%), 사진 ${apiProcessedPhotos}/${totalPhotos} (${photoRatio}%), API 시도 ${apiAttemptedClusters}, API 성공 ${apiCallCount}, DB 반영 ${apiTrackUpdated}, 실패 ${apiFailedClusters}`);
+                    console.log(`[${nowKst()}] 🌐 API Phase 진행: 클러스터 ${apiProcessedClusters}/${apiTrackClusters.length} (${clusterRatio}%), 사진 ${apiProcessedPhotos}/${totalPhotos} (${photoRatio}%), API 시도 ${apiAttemptedClusters}, API 성공 ${apiCallCount}, DB 반영 ${apiTrackUpdated}, 검토 대기 ${apiReviewRequiredClusters}, 실패 ${apiFailedClusters}`);
                 }
 
                 if (address?.source === 'api') {
@@ -737,6 +896,8 @@ async function main(forceUpdate = false) {
         console.log(` ├─ Polygon 대상 캐시 보강 success/not_found/miss: ${overrideCacheFilledSuccess}/${overrideCacheFilledNotFound}/${overrideCacheFilledMiss}`);
         console.log(` ├─ Cache 즉시 반영 클러스터: ${fastTrackClusters.length}개`);
         console.log(` ├─ Cache not_found 보류 클러스터: ${negativeCacheSkippedClusters}개`);
+        console.log(` ├─ 경계/국가 검토 대기 클러스터: ${reviewRequiredClusters.length + apiReviewRequiredClusters}개`);
+        console.log(` ├─ 경계/국가 검토 대기 사진: ${reviewRequiredPhotos}건`);
         console.log(` ├─ API 조회 대상 클러스터: ${apiTrackClusters.length}개`);
         console.log(` ├─ Polygon 반영: ${overrideUpdated}건`);
         console.log(` ├─ Cache 반영: ${fastTrackUpdated}건`);
@@ -758,6 +919,8 @@ async function main(forceUpdate = false) {
                 overrideClusters: overrideClusters.length,
                 fastTrackClusters: fastTrackClusters.length,
                 negativeCacheClusters: negativeCacheSkippedClusters,
+                reviewRequiredClusters: reviewRequiredClusters.length + apiReviewRequiredClusters,
+                reviewRequiredPhotos,
                 apiTrackClusters: apiTrackClusters.length,
                 overrideUpdated,
                 fastTrackUpdated,
