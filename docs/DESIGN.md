@@ -10,6 +10,8 @@ Immich GeoSync는 Immich 사진의 좌표 기반 위치 정보를 한국어 주�
 - admin은 클러스터 맵 에디터, 워커상태, 설정을 메뉴형 UI로 제공한다.
 - admin 설정 페이지는 운영 `.env` 파일을 수정할 수 있어야 한다.
 - worker와 admin은 같은 `.env`를 사용하되, 민감 값은 UI에서 마스킹한다.
+- worker는 대량 위치정보 업데이트를 제한된 크기의 배치로 나눠 PostgreSQL bind 한도를 안정적으로 지킨다.
+- worker의 작업 쿼리와 로그 저장 쿼리는 별도 PostgreSQL 연결을 사용한다.
 - 설정 저장 후 실제 런타임 적용 시점이 명확해야 한다.
 - worker 로그는 최신 로그가 보이는 위치로 자동 스크롤되고, 자동 새로고침/복사/다운로드를 제공한다.
 - 운영 접속 주소는 `http://openclaw:3030/admin/`이다.
@@ -96,6 +98,8 @@ docker compose restart immich-geosync-worker immich-geosync-admin
 - `custom_geo_worker_logs`: worker 로그
 - `custom_geo_worker_state`: worker 현재 상태와 마지막 실행 설정 스냅샷
 
+Worker는 `asset_exif` 갱신을 최대 1,000장 단위로 순차 처리한다. 실행 로그는 작업용 DB 연결과 분리된 전용 연결로 저장하고, 종료 시 진행 중인 로그 저장을 모두 기다린 뒤 연결을 닫는다.
+
 테이블명은 기존 운영 데이터와 호환을 위해 `custom_geo_*` 이름을 유지한다.
 
 ## Deployment
@@ -111,6 +115,9 @@ docker compose restart immich-geosync-worker immich-geosync-admin
 ## Test Plan
 
 - 정적 문법 확인: `node --check admin-server.js`, `node --check admin/app.js`
+- Worker 정적 문법 확인: `node --check updater.js`
+- 1,000장을 초과하는 단일 클러스터가 여러 DB update 배치로 분할되는지 확인
+- worker 실행 중 `client.query()` 동시 실행 경고가 발생하지 않는지 확인
 - Admin health check: `/healthz`
 - Admin page title: `<title>Immich GeoSync Admin</title>`
 - Settings API: `/api/admin/settings`

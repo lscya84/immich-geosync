@@ -45,6 +45,7 @@ const CACHE_TTL_DAYS = 180;
 const NOT_FOUND_CACHE_TTL_DAYS = parseInt(process.env.NOT_FOUND_CACHE_TTL_DAYS || '30', 10);
 
 const FAST_TRACK_CHUNK_SIZE = 2000;
+const DB_UPDATE_CHUNK_SIZE = 1000;
 const FAST_TRACK_LOG_INTERVAL = 10000;
 const API_TRACK_LOG_INTERVAL = 50;
 const API_FAILURE_LOG_LIMIT = 5;
@@ -52,6 +53,7 @@ const API_FAILURE_LOG_LIMIT = 5;
 let isRunning = false;
 let activeRunId = null;
 let activeLogClient = null;
+const pendingLogWrites = new Set();
 const originalConsole = { ...console };
 
 function getWorkerRuntimeConfig() {
@@ -78,13 +80,16 @@ function stringifyLogArg(arg) {
 
 function mirrorConsoleToDb(level, args) {
     if (!activeLogClient || !activeRunId) return;
-    appendWorkerLog(activeLogClient, {
+    const writePromise = appendWorkerLog(activeLogClient, {
         runId: activeRunId,
         level,
         message: args.map(stringifyLogArg).join(' '),
     }).catch((error) => {
         originalConsole.warn(`[${nowKst()}] ⚠️ 워커 로그 DB 저장 실패: ${error.message}`);
+    }).finally(() => {
+        pendingLogWrites.delete(writePromise);
     });
+    pendingLogWrites.add(writePromise);
 }
 
 console.log = (...args) => {
@@ -340,9 +345,7 @@ async function listEnabledOverrideRules(client) {
     }));
 }
 
-async function bulkUpdateAssets(client, items) {
-    if (!items.length) return 0;
-
+async function updateAssetChunk(client, items) {
     const values = [];
     const placeholders = [];
 
@@ -366,6 +369,17 @@ async function bulkUpdateAssets(client, items) {
 
     const result = await client.query(query, values);
     return result.rowCount || 0;
+}
+
+async function bulkUpdateAssets(client, items) {
+    let totalUpdated = 0;
+
+    for (let i = 0; i < items.length; i += DB_UPDATE_CHUNK_SIZE) {
+        const chunk = items.slice(i, i + DB_UPDATE_CHUNK_SIZE);
+        totalUpdated += await updateAssetChunk(client, chunk);
+    }
+
+    return totalUpdated;
 }
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
@@ -485,6 +499,7 @@ async function main(forceUpdate = false) {
     isRunning = true;
     activeRunId = randomUUID();
     const client = new Client(config.db);
+    const logClient = new Client(config.db);
 
     let connected = false;
     let retryCount = 0;
@@ -511,7 +526,8 @@ async function main(forceUpdate = false) {
 
     try {
         await ensureWorkerMonitorTables(client);
-        activeLogClient = client;
+        await logClient.connect();
+        activeLogClient = logClient;
         await startWorkerRun(client, {
             id: activeRunId,
             forceUpdate,
@@ -806,6 +822,10 @@ async function main(forceUpdate = false) {
         }
     } finally {
         activeLogClient = null;
+        await Promise.allSettled([...pendingLogWrites]);
+        try {
+            await logClient.end();
+        } catch (e) {}
         try {
             await client.end();
         } catch (e) {}
