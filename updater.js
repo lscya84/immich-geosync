@@ -152,7 +152,7 @@ function setMemoryCache(cacheKey, value, enforceLimit = true) {
 
 async function ensureCacheTable(client) {
     await client.query(`
-        CREATE TABLE IF NOT EXISTS "custom_naver_geocode_cache" (
+        CREATE TABLE IF NOT EXISTS "custom_geo_geocode_cache" (
             "cache_key" VARCHAR PRIMARY KEY,
             "country" VARCHAR,
             "state" VARCHAR,
@@ -170,15 +170,15 @@ async function ensureCacheTable(client) {
             "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `);
-    await client.query(`ALTER TABLE "custom_naver_geocode_cache" ADD COLUMN IF NOT EXISTS "status" VARCHAR`);
-    await client.query(`ALTER TABLE "custom_naver_geocode_cache" ADD COLUMN IF NOT EXISTS "failure_reason" VARCHAR`);
+    await client.query(`ALTER TABLE "custom_geo_geocode_cache" ADD COLUMN IF NOT EXISTS "status" VARCHAR`);
+    await client.query(`ALTER TABLE "custom_geo_geocode_cache" ADD COLUMN IF NOT EXISTS "failure_reason" VARCHAR`);
     const structuredColumns = [
         ['country', 'VARCHAR'], ['legal_dong', 'VARCHAR'], ['road_address', 'TEXT'],
         ['jibun_address', 'TEXT'], ['building_name', 'VARCHAR'], ['provider', 'VARCHAR'],
         ['provider_agreement', 'BOOLEAN'], ['validation_status', 'VARCHAR'], ['validation_details', 'JSONB'],
     ];
     for (const [column, type] of structuredColumns) {
-        await client.query(`ALTER TABLE "custom_naver_geocode_cache" ADD COLUMN IF NOT EXISTS "${column}" ${type}`);
+        await client.query(`ALTER TABLE "custom_geo_geocode_cache" ADD COLUMN IF NOT EXISTS "${column}" ${type}`);
     }
 }
 
@@ -189,7 +189,7 @@ async function warmUpCache(client) {
         `SELECT "cache_key", "country", "state", "city", "legal_dong", "road_address", "jibun_address",
                 "building_name", "provider", "provider_agreement", "validation_status", "validation_details",
                 "status", "failure_reason"
-         FROM "custom_naver_geocode_cache"
+         FROM "custom_geo_geocode_cache"
          WHERE (
              COALESCE("status", 'success') = 'success'
              AND "updated_at" >= CURRENT_TIMESTAMP - ($1 * INTERVAL '1 day')
@@ -228,12 +228,12 @@ async function warmUpCache(client) {
 
 async function clearAllCache(client) {
     addressCache.clear();
-    await client.query('TRUNCATE TABLE "custom_naver_geocode_cache"');
+    await client.query('TRUNCATE TABLE "custom_geo_geocode_cache"');
 }
 
 async function upsertCache(client, cacheKey, address) {
     await client.query(
-        `INSERT INTO "custom_naver_geocode_cache"
+        `INSERT INTO "custom_geo_geocode_cache"
             ("cache_key", "country", "state", "city", "legal_dong", "road_address", "jibun_address",
              "building_name", "provider", "provider_agreement", "validation_status", "validation_details",
              "status", "failure_reason", "updated_at")

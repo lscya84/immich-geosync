@@ -120,7 +120,7 @@ Worker는 `asset_exif` 갱신을 최대 1,000장 단위로 순차 처리한다. 
 
 ## Structured Geocode Cache
 
-`custom_naver_geocode_cache`는 기존 `state`, `city` 호환 컬럼을 유지하면서 다음 구조화 컬럼을 추가한다.
+`custom_geo_geocode_cache`는 특정 공급자에 종속되지 않은 GeoSync 전용 구조화 캐시다. 기존 `custom_naver_geocode_cache` 데이터는 자동 이관하지 않으며 새 배포는 빈 캐시에서 시작한다.
 
 - `country`
 - `legal_dong`
@@ -133,6 +133,8 @@ Worker는 `asset_exif` 갱신을 최대 1,000장 단위로 순차 처리한다. 
 - `validation_details` JSONB
 
 `status`는 `success`, `not_found`, `review_required`를 사용한다. `review_required`는 Admin에서 검토 후 `success`로 바꾸기 전까지 worker가 자동 적용하지 않는다.
+
+운영 초기화 시 기존 worker 실행이 끝난 뒤 구형 `custom_naver_geocode_cache`를 삭제하고, 새 `custom_geo_geocode_cache`를 비운 상태에서 `--force` 전체 재처리를 실행한다. 새 격자 캐시 키는 `grid:<cellSize>:<cellX>:<cellY>` 형식만 사용하며 구형 위경도 반올림 키와 혼용하지 않는다.
 
 테이블명은 기존 운영 데이터와 호환을 위해 `custom_geo_*` 이름을 유지한다.
 

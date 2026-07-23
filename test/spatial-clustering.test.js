@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   buildCoordinateBuckets,
+  buildSpatialGridKey,
   clusterRowsByGrid,
   selectRepresentativeCoordinate,
   partitionRowsByRules,
@@ -37,6 +38,13 @@ test('grid clustering is deterministic regardless of input order', () => {
   }));
 
   assert.deepEqual(summarize(rows), summarize([...rows].reverse()));
+});
+
+test('single-coordinate grid key matches the cluster cache key', () => {
+  const source = row('a', 37.5, 126.9);
+  const grid = buildSpatialGridKey(source.latitude, source.longitude, 15);
+  const cluster = clusterRowsByGrid([source], 15)[0];
+  assert.equal(grid.key, cluster.geoCacheKey);
 });
 
 test('representative coordinate is always one of the actual coordinates', () => {
