@@ -24,6 +24,9 @@ Immich GeoSync는 Immich 사진의 좌표 기반 위치 정보를 한국어 주�
 - Immich `v3`의 edited asset 파일 구조를 따라 어드민 미리보기는 현재 편집 상태와 최대한 같은 preview/thumbnail을 우선 선택해야 한다.
 - Immich `v3`의 `lockedProperties` 중 좌표 잠금(`latitude`, `longitude`)은 수동 좌표 이동에서 존중해야 한다.
 - 어드민 preview 경로는 기본 업로드 루트뿐 아니라 `UPLOAD_LOCATION` 기반 custom media path도 허용해야 한다.
+- 클러스터 맵은 고배율에서도 일반 위치점을 모두 개별 HTML 마커로 풀지 않고, 화면 내 일반 마커를 최대 300개로 제한하는 적응형 격자 집계를 유지해야 한다.
+- Polygon 규칙과 수동 클러스터는 일반 위치점 집계와 분리해 항상 독립 마커로 표시해야 한다.
+- 지도 이동 중 새 클러스터 조회가 시작되면 이전 조회를 취소해 오래된 응답과 불필요한 서버 작업을 줄여야 한다.
 
 ## 가정
 
@@ -93,6 +96,8 @@ docker compose restart immich-geosync-worker immich-geosync-admin
   - 설정: `.env` 기반 설정 폼
 
 워커상태 화면의 작동 로그는 최신 위치로 따라가며, 10초 자동 새로고침 토글과 로그 복사/다운로드 버튼을 제공한다.
+
+클러스터 맵은 현재 줌 단계의 기본 격자로 일반 위치점을 묶고, 결과가 300개를 넘으면 격자 크기를 단계적으로 키워 표시 수를 제한한다. 수동 그룹과 Polygon 단일 클러스터는 이 제한과 별도로 유지한다. 일반 위치점은 기존 HTML 마커 디자인과 클릭 동작을 보존하되, 지도 이동 시 이전 API 요청을 `AbortController`로 취소한다.
 
 ## Data Model
 
@@ -166,6 +171,9 @@ Worker는 `asset_exif` 갱신을 최대 1,000장 단위로 순차 처리한다. 
 - Settings API: `/api/admin/settings`
 - Worker API: `/api/admin/worker`
 - Worker log controls: 최신 로그 자동 스크롤, 자동 새로고침, 복사, 다운로드
+- 고배율에서도 일반 위치점 표시가 300개 이하인지 확인
+- 수동 그룹과 Polygon 단일 클러스터가 일반 위치점 집계와 별도로 유지되는지 확인
+- 연속 지도 이동 시 이전 `/api/clusters` 요청이 취소되고 최신 응답만 렌더링되는지 확인
 - 운영 배포 후 compose service/container 이름 확인
 
 ## Risks / Notes

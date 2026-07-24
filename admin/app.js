@@ -2,6 +2,7 @@ let map = null;
 let clusterLoadTimer = null;
 let clusterRequestSeq = 0;
 let latestClusterRenderSeq = 0;
+let clusterRequestController = null;
 let draftShape = null;
 let draftGuideLine = null;
 let editingPolygon = null;
@@ -99,7 +100,6 @@ const selectedMergeClusters = new Map();
 let lastLoadedClusters = [];
 const photoPageSize = 12;
 let ruleCountRequestSeq = 0;
-const FULL_CLUSTER_DISPLAY_ZOOM = 16;
 let cachePage = 1;
 let cachePageSize = Number(cachePageSizeSelect?.value || 100);
 let cacheTotalPages = 1;
@@ -1452,76 +1452,9 @@ function getClusterMarkerSize(cluster) {
   return 44;
 }
 
-function getDisplayClusterGridSize(zoom) {
-  if (zoom >= FULL_CLUSTER_DISPLAY_ZOOM) return 0;
-  if (zoom <= 7) return 0.8;
-  if (zoom <= 9) return 0.25;
-  if (zoom <= 11) return 0.08;
-  if (zoom <= 13) return 0.03;
-  return 0.01;
-}
-
 function buildDisplayClusters(clusters) {
-  const manualGroups = [];
-  const regularClusters = [];
-  (clusters || []).forEach((cluster) => {
-    if (cluster?.clusterType === 'manual_group') manualGroups.push(cluster);
-    else regularClusters.push(cluster);
-  });
-
   const zoom = map?.getZoom?.() || 7;
-  const gridSize = getDisplayClusterGridSize(zoom);
-  if (!gridSize) {
-    return [
-      ...manualGroups,
-      ...regularClusters.map((cluster) => ({
-        ...cluster,
-        sourceClusters: [cluster],
-        mergedClusterCount: 1,
-        isMergedDisplayCluster: false,
-      })),
-    ];
-  }
-
-  const grouped = new Map();
-  regularClusters.forEach((cluster) => {
-    const latKey = Math.floor(Number(cluster.latitude) / gridSize);
-    const lngKey = Math.floor(Number(cluster.longitude) / gridSize);
-    const key = `${zoom}:${latKey}:${lngKey}`;
-    if (!grouped.has(key)) {
-      grouped.set(key, {
-        bucketKey: key,
-        latitudeSum: 0,
-        longitudeSum: 0,
-        assetCount: 0,
-        sourceClusters: [],
-      });
-    }
-    const bucket = grouped.get(key);
-    const weight = Math.max(1, Number(cluster.assetCount) || 1);
-    bucket.latitudeSum += Number(cluster.latitude) * weight;
-    bucket.longitudeSum += Number(cluster.longitude) * weight;
-    bucket.assetCount += weight;
-    bucket.sourceClusters.push(cluster);
-  });
-
-  return [
-    ...manualGroups,
-    ...[...grouped.values()].map((bucket) => {
-      const primary = bucket.sourceClusters[0];
-      const mergedClusterCount = bucket.sourceClusters.length;
-      return {
-        ...primary,
-        clusterKey: bucket.bucketKey,
-        latitude: bucket.latitudeSum / bucket.assetCount,
-        longitude: bucket.longitudeSum / bucket.assetCount,
-        assetCount: bucket.assetCount,
-        sourceClusters: bucket.sourceClusters,
-        mergedClusterCount,
-        isMergedDisplayCluster: mergedClusterCount > 1,
-      };
-    }),
-  ];
+  return window.GeoSyncDisplayClustering.buildDisplayClusters(clusters, zoom);
 }
 
 function getClusterMarkerClassName(cluster) {
@@ -1597,6 +1530,8 @@ function clearClusterOverlays() {
 }
 
 function resetClusterRenderState() {
+  clusterRequestController?.abort();
+  clusterRequestController = null;
   clearClusterOverlays();
   latestClusterRenderSeq = 0;
   clusterRequestSeq = 0;
@@ -2061,6 +1996,9 @@ async function loadRules() {
 
 async function loadClusters() {
   if (!map) return;
+  clusterRequestController?.abort();
+  const requestController = new AbortController();
+  clusterRequestController = requestController;
   const bounds = map.getBounds();
   const sw = bounds.getSW();
   const ne = bounds.getNE();
@@ -2072,7 +2010,17 @@ async function loadClusters() {
     zoom: map.getZoom().toString(),
   });
   const requestSeq = ++clusterRequestSeq;
-  const data = await fetchJson(`/api/clusters?${params.toString()}`);
+  let data;
+  try {
+    data = await fetchJson(`/api/clusters?${params.toString()}`, {
+      signal: requestController.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    throw error;
+  } finally {
+    if (clusterRequestController === requestController) clusterRequestController = null;
+  }
   if (requestSeq < latestClusterRenderSeq) return;
   latestClusterRenderSeq = requestSeq;
   renderClusters(data.clusters);
