@@ -10,6 +10,7 @@ let selectedPhotoMarker = null;
 let ruleInfoWindow = null;
 const ruleOverlays = [];
 const clusterOverlays = new Map();
+const displayGridOverlays = [];
 
 const ruleForm = document.getElementById('rule-form');
 const saveRuleButton = document.getElementById('save-rule-button');
@@ -25,6 +26,7 @@ const mobilePanelToggle = document.getElementById('mobile-panel-toggle');
 const mobilePanelBackdrop = document.getElementById('mobile-panel-backdrop');
 const toggleMergeClustersButton = document.getElementById('toggle-merge-clusters');
 const applyMergeClustersButton = document.getElementById('apply-merge-clusters');
+const toggleDisplayGridButton = document.getElementById('toggle-display-grid');
 const mapWrap = document.querySelector('.map-wrap');
 const mapStage = document.querySelector('.map-stage');
 const photoPanel = document.getElementById('photo-panel');
@@ -96,6 +98,7 @@ let restartModalOnApprove = null;
 let clusterCoordinateDraft = null;
 let clusterCoordinateMarker = null;
 let isSelectingClustersForMerge = false;
+let isDisplayGridVisible = false;
 const selectedMergeClusters = new Map();
 let lastLoadedClusters = [];
 const photoPageSize = 12;
@@ -1529,10 +1532,49 @@ function clearClusterOverlays() {
   clusterOverlays.clear();
 }
 
+function clearDisplayGridOverlays() {
+  while (displayGridOverlays.length) {
+    clearOverlay(displayGridOverlays.pop());
+  }
+}
+
+function renderDisplayGridOverlays(displayClusters) {
+  clearDisplayGridOverlays();
+  if (!isDisplayGridVisible || !map) return;
+
+  displayClusters.forEach((cluster) => {
+    const grid = cluster?.displayGrid;
+    if (!grid) return;
+    displayGridOverlays.push(new naver.maps.Rectangle({
+      map,
+      bounds: new naver.maps.LatLngBounds(
+        new naver.maps.LatLng(grid.south, grid.west),
+        new naver.maps.LatLng(grid.north, grid.east),
+      ),
+      strokeColor: '#374151',
+      strokeOpacity: 0.42,
+      strokeWeight: 1,
+      fillColor: '#6b7280',
+      fillOpacity: 0.035,
+      clickable: false,
+      zIndex: 50,
+    }));
+  });
+}
+
+function setDisplayGridVisible(visible) {
+  isDisplayGridVisible = Boolean(visible);
+  toggleDisplayGridButton?.classList.toggle('is-active', isDisplayGridVisible);
+  toggleDisplayGridButton?.setAttribute('aria-pressed', isDisplayGridVisible ? 'true' : 'false');
+  toggleDisplayGridButton?.setAttribute('title', isDisplayGridVisible ? '표시 격자 숨기기' : '표시 격자 보기');
+  renderDisplayGridOverlays(buildDisplayClusters(lastLoadedClusters));
+}
+
 function resetClusterRenderState() {
   clusterRequestController?.abort();
   clusterRequestController = null;
   clearClusterOverlays();
+  clearDisplayGridOverlays();
   latestClusterRenderSeq = 0;
   clusterRequestSeq = 0;
 }
@@ -1545,6 +1587,7 @@ function refreshClustersNow() {
 function renderClusters(clusters) {
   lastLoadedClusters = Array.isArray(clusters) ? clusters : [];
   const displayClusters = buildDisplayClusters(clusters);
+  renderDisplayGridOverlays(displayClusters);
   const nextKeys = new Set();
 
   displayClusters.forEach((cluster) => {
@@ -2248,6 +2291,9 @@ function bindUiEvents() {
   document.getElementById('refresh-clusters').addEventListener('click', () => refreshClustersNow().catch((error) => {
     console.error(error);
   }));
+  toggleDisplayGridButton?.addEventListener('click', () => {
+    setDisplayGridVisible(!isDisplayGridVisible);
+  });
   toggleMergeClustersButton?.addEventListener('click', () => {
     const next = !isSelectingClustersForMerge;
     if (next) {

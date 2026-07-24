@@ -38,3 +38,12 @@ test('줌이 높아질수록 기본 격자가 작아진다', () => {
   assert.ok(getBaseGridSize(18) < getBaseGridSize(16));
   assert.ok(getBaseGridSize(16) < getBaseGridSize(14));
 });
+
+test('일반 위치점 집계 결과에 표시 격자 경계를 포함한다', () => {
+  const [cluster] = buildDisplayClusters([makeCluster(1)], 18);
+  assert.ok(cluster.displayGrid);
+  assert.ok(cluster.latitude >= cluster.displayGrid.south);
+  assert.ok(cluster.latitude <= cluster.displayGrid.north);
+  assert.ok(cluster.longitude >= cluster.displayGrid.west);
+  assert.ok(cluster.longitude <= cluster.displayGrid.east);
+});

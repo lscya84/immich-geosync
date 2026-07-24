@@ -52,6 +52,12 @@
         clusterKey: bucket.bucketKey,
         latitude: bucket.latitudeSum / bucket.assetCount,
         longitude: bucket.longitudeSum / bucket.assetCount,
+        displayGrid: {
+          south: Math.floor(Number(primary.latitude) / gridSize) * gridSize,
+          north: (Math.floor(Number(primary.latitude) / gridSize) + 1) * gridSize,
+          west: Math.floor(Number(primary.longitude) / gridSize) * gridSize,
+          east: (Math.floor(Number(primary.longitude) / gridSize) + 1) * gridSize,
+        },
         assetCount: bucket.assetCount,
         sourceClusters: bucket.sourceClusters,
         mergedClusterCount,
