@@ -1445,6 +1445,11 @@ async function loadRuleCounts() {
 
 function getClusterMarkerSize(cluster) {
   const count = Math.max(1, Number(cluster.assetCount) || 1);
+  const isRegularSingle = count === 1
+    && !cluster.ruleId
+    && cluster.clusterType !== 'single_rule'
+    && cluster.clusterType !== 'manual_group';
+  if (isRegularSingle) return 6;
   if (count <= 1) return 14;
   if (count <= 3) return 16;
   if (count <= 10) return 18;
@@ -1465,7 +1470,12 @@ function getClusterMarkerClassName(cluster) {
   if (cluster.isMergedDisplayCluster) classes.push('is-merged');
   if (cluster.ruleId || cluster.clusterType === 'single_rule') classes.push('is-rule');
   if (cluster.clusterType === 'manual_group') classes.push('is-manual-group');
-  if (cluster.assetCount === 1) classes.push('is-single');
+  if (
+    Number(cluster.assetCount) === 1
+    && !cluster.ruleId
+    && cluster.clusterType !== 'single_rule'
+    && cluster.clusterType !== 'manual_group'
+  ) classes.push('is-single');
   if (isClusterSelectedForMerge(cluster)) classes.push('is-selected');
   return classes.join(' ');
 }
