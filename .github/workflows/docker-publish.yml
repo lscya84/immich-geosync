@@ -9,7 +9,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  anti-slop:
+    uses: ./.github/workflows/anti-slop.yml
+    permissions:
+      contents: read
+
   docker:
+    needs: anti-slop
     runs-on: ubuntu-latest
     permissions:
       contents: read
